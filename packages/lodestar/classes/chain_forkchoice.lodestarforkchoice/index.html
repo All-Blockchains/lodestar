@@ -8,17 +8,17 @@
 <meta content="Lodestar documentation - Typescript Eth2.0 client" name="description"/>
 <link href="https://chainsafe.github.io/lodestar/packages/lodestar/classes/chain_forkchoice.lodestarforkchoice/" rel="canonical"/>
 <link href="../../../../images/favicon.ico" rel="icon"/>
-<meta content="mkdocs-1.1.2, mkdocs-material-7.0.7" name="generator"/>
+<meta content="mkdocs-1.1.2, mkdocs-material-7.1.4" name="generator"/>
 <title>Chain forkchoice.lodestarforkchoice - Lodestar documentation</title>
-<link href="../../../../assets/stylesheets/main.c772ddf0.min.css" rel="stylesheet"/>
-<link href="../../../../assets/stylesheets/palette.7fa14f5b.min.css" rel="stylesheet"/>
+<link href="../../../../assets/stylesheets/main.bde7dde4.min.css" rel="stylesheet"/>
+<link href="../../../../assets/stylesheets/palette.ef6f36e2.min.css" rel="stylesheet"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700%7CRoboto+Mono&amp;display=fallback" rel="stylesheet"/>
 <style>:root{--md-text-font-family:"Roboto";--md-code-font-family:"Roboto Mono"}</style>
 <link href="../../../../stylesheets/extras.css" rel="stylesheet"/>
 </head>
 <body data-md-color-accent="black" data-md-color-primary="" data-md-color-scheme="preference" dir="ltr">
-<script>matchMedia("(prefers-color-scheme: dark)").matches&&document.body.setAttribute("data-md-color-scheme","slate")</script>
+<script>function __prefix(e){return new URL("../../../..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
 <label class="md-overlay" for="__drawer"></label>
@@ -52,8 +52,6 @@
           </span>
 </div>
 </div>
-</div>
-<div class="md-header__options">
 </div>
 <label class="md-header__button md-icon" for="__search">
 <svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
@@ -361,6 +359,11 @@
 <nav aria-label="Specification" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
+<a class="md-nav__link" href="#getbestjustifiedcheckpoint">
+    getBestJustifiedCheckpoint
+  </a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#getblock">
     getBlock
   </a>
@@ -552,6 +555,7 @@
 <ul>
 <li><a href="./#forwarditerateblocksummaries">forwardIterateBlockSummaries</a></li>
 <li><a href="./#getancestor">getAncestor</a></li>
+<li><a href="./#getbestjustifiedcheckpoint">getBestJustifiedCheckpoint</a></li>
 <li><a href="./#getblock">getBlock</a></li>
 <li><a href="./#getblocksummariesatslot">getBlockSummariesAtSlot</a></li>
 <li><a href="./#getblocksummariesbyparentroot">getBlockSummariesByParentRoot</a></li>
@@ -579,7 +583,7 @@
 <h3 id="constructor">constructor<a class="headerlink" href="#constructor" title="Permanent link">¶</a></h3>
 <p>+ <strong>new LodestarForkChoice</strong>(<code>__namedParameters</code>: object): <em><a href="./">LodestarForkChoice</a></em></p>
 <p><em>Overrides void</em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/chain/forkChoice/forkChoice.ts#L18">packages/lodestar/src/chain/forkChoice/forkChoice.ts:18</a></em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/chain/forkChoice/forkChoice.ts#L18">packages/lodestar/src/chain/forkChoice/forkChoice.ts:18</a></em></p>
 <p><strong>Parameters:</strong></p>
 <p>▪ <strong>__namedParameters</strong>: <em>object</em></p>
 <table>
@@ -667,7 +671,7 @@ Each vote contains the latest message and previous message</p>
 <h3 id="forwarditerateblocksummaries">forwardIterateBlockSummaries<a class="headerlink" href="#forwarditerateblocksummaries" title="Permanent link">¶</a></h3>
 <p>▸ <strong>forwardIterateBlockSummaries</strong>(): <em>IBlockSummary[]</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#forwarditerateblocksummaries">forwardIterateBlockSummaries</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:177</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:178</p>
 <p><strong>Returns:</strong> <em>IBlockSummary[]</em></p>
 <hr/>
 <h3 id="getancestor">getAncestor<a class="headerlink" href="#getancestor" title="Permanent link">¶</a></h3>
@@ -700,10 +704,16 @@ Each vote contains the latest message and previous message</p>
 </table>
 <p><strong>Returns:</strong> <em>Uint8Array</em></p>
 <hr/>
+<h3 id="getbestjustifiedcheckpoint">getBestJustifiedCheckpoint<a class="headerlink" href="#getbestjustifiedcheckpoint" title="Permanent link">¶</a></h3>
+<p>▸ <strong>getBestJustifiedCheckpoint</strong>(): <em>Checkpoint</em></p>
+<p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#getbestjustifiedcheckpoint">getBestJustifiedCheckpoint</a></em></p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:101</p>
+<p><strong>Returns:</strong> <em>Checkpoint</em></p>
+<hr/>
 <h3 id="getblock">getBlock<a class="headerlink" href="#getblock" title="Permanent link">¶</a></h3>
 <p>▸ <strong>getBlock</strong>(<code>blockRoot</code>: phase0.Root): <em>IBlockSummary | null</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#getblock">getBlock</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:153</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:154</p>
 <p>Returns a <code>IBlockSummary</code> if the block is known <strong>and</strong> a descendant of the finalized root.</p>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -725,7 +735,7 @@ Each vote contains the latest message and previous message</p>
 <h3 id="getblocksummariesatslot">getBlockSummariesAtSlot<a class="headerlink" href="#getblocksummariesatslot" title="Permanent link">¶</a></h3>
 <p>▸ <strong>getBlockSummariesAtSlot</strong>(<code>slot</code>: Slot): <em>IBlockSummary[]</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#getblocksummariesatslot">getBlockSummariesAtSlot</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:179</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:180</p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -746,7 +756,7 @@ Each vote contains the latest message and previous message</p>
 <h3 id="getblocksummariesbyparentroot">getBlockSummariesByParentRoot<a class="headerlink" href="#getblocksummariesbyparentroot" title="Permanent link">¶</a></h3>
 <p>▸ <strong>getBlockSummariesByParentRoot</strong>(<code>parentRoot</code>: phase0.Root): <em>IBlockSummary[]</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#getblocksummariesbyparentroot">getBlockSummariesByParentRoot</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:178</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:179</p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -767,7 +777,7 @@ Each vote contains the latest message and previous message</p>
 <h3 id="getcanonicalblocksummaryatslot">getCanonicalBlockSummaryAtSlot<a class="headerlink" href="#getcanonicalblocksummaryatslot" title="Permanent link">¶</a></h3>
 <p>▸ <strong>getCanonicalBlockSummaryAtSlot</strong>(<code>slot</code>: Slot): <em>IBlockSummary | null</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#getcanonicalblocksummaryatslot">getCanonicalBlockSummaryAtSlot</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:176</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:177</p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -788,7 +798,7 @@ Each vote contains the latest message and previous message</p>
 <h3 id="getfinalizedblock">getFinalizedBlock<a class="headerlink" href="#getfinalizedblock" title="Permanent link">¶</a></h3>
 <p>▸ <strong>getFinalizedBlock</strong>(): <em>IBlockSummary</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#getfinalizedblock">getFinalizedBlock</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:154</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:155</p>
 <p><strong>Returns:</strong> <em>IBlockSummary</em></p>
 <hr/>
 <h3 id="getfinalizedcheckpoint">getFinalizedCheckpoint<a class="headerlink" href="#getfinalizedcheckpoint" title="Permanent link">¶</a></h3>
@@ -828,7 +838,7 @@ Each vote contains the latest message and previous message</p>
 <h3 id="getlatestmessage">getLatestMessage<a class="headerlink" href="#getlatestmessage" title="Permanent link">¶</a></h3>
 <p>▸ <strong>getLatestMessage</strong>(<code>validatorIndex</code>: ValidatorIndex): <em>ILatestMessage | undefined</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#getlatestmessage">getLatestMessage</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:140</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:141</p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -849,13 +859,13 @@ Each vote contains the latest message and previous message</p>
 <h3 id="gettime">getTime<a class="headerlink" href="#gettime" title="Permanent link">¶</a></h3>
 <p>▸ <strong>getTime</strong>(): <em>Slot</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#gettime">getTime</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:145</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:146</p>
 <p><strong>Returns:</strong> <em>Slot</em></p>
 <hr/>
 <h3 id="hasblock">hasBlock<a class="headerlink" href="#hasblock" title="Permanent link">¶</a></h3>
 <p>▸ <strong>hasBlock</strong>(<code>blockRoot</code>: phase0.Root): <em>boolean</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#hasblock">hasBlock</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:149</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:150</p>
 <p>Returns <code>true</code> if the block is known <strong>and</strong> a descendant of the finalized root.</p>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -877,7 +887,7 @@ Each vote contains the latest message and previous message</p>
 <h3 id="isdescendant">isDescendant<a class="headerlink" href="#isdescendant" title="Permanent link">¶</a></h3>
 <p>▸ <strong>isDescendant</strong>(<code>ancestorRoot</code>: phase0.Root, <code>descendantRoot</code>: phase0.Root): <em>boolean</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#isdescendant">isDescendant</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:165</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:166</p>
 <p>Returns true if the <code>descendantRoot</code> has an ancestor with <code>ancestorRoot</code>.</p>
 <p>Always returns <code>false</code> if either input roots are unknown.
 Still returns <code>true</code> if <code>ancestorRoot===descendantRoot</code> (and the roots are known)</p>
@@ -905,7 +915,7 @@ Still returns <code>true</code> if <code>ancestorRoot===descendantRoot</code> (a
 <h3 id="isdescendantoffinalized">isDescendantOfFinalized<a class="headerlink" href="#isdescendantoffinalized" title="Permanent link">¶</a></h3>
 <p>▸ <strong>isDescendantOfFinalized</strong>(<code>blockRoot</code>: phase0.Root): <em>boolean</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#isdescendantoffinalized">isDescendantOfFinalized</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:158</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:159</p>
 <p>Return <code>true</code> if <code>block_root</code> is equal to the finalized root, or a known descendant of it.</p>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -927,7 +937,7 @@ Still returns <code>true</code> if <code>ancestorRoot===descendantRoot</code> (a
 <h3 id="iterateblocksummaries">iterateBlockSummaries<a class="headerlink" href="#iterateblocksummaries" title="Permanent link">¶</a></h3>
 <p>▸ <strong>iterateBlockSummaries</strong>(<code>blockRoot</code>: phase0.Root): <em>IBlockSummary[]</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#iterateblocksummaries">iterateBlockSummaries</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:171</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:172</p>
 <p>Iterates backwards through block summaries, starting from a block root</p>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -949,7 +959,7 @@ Still returns <code>true</code> if <code>ancestorRoot===descendantRoot</code> (a
 <h3 id="iteratenonancestors">iterateNonAncestors<a class="headerlink" href="#iteratenonancestors" title="Permanent link">¶</a></h3>
 <p>▸ <strong>iterateNonAncestors</strong>(<code>blockRoot</code>: phase0.Root): <em>IBlockSummary[]</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#iteratenonancestors">iterateNonAncestors</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:175</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:176</p>
 <p>The same to iterateBlockSummaries but this gets non-ancestor nodes instead of ancestor nodes.</p>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -971,7 +981,7 @@ Still returns <code>true</code> if <code>ancestorRoot===descendantRoot</code> (a
 <h3 id="onattestation">onAttestation<a class="headerlink" href="#onattestation" title="Permanent link">¶</a></h3>
 <p>▸ <strong>onAttestation</strong>(<code>attestation</code>: IndexedAttestation): <em>void</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#onattestation">onAttestation</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:139</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:140</p>
 <p>Register <code>attestation</code> with the fork choice DAG so that it may influence future calls to <code>getHead</code>.</p>
 <h2 id="specification_2">Specification<a class="headerlink" href="#specification_2" title="Permanent link">¶</a></h2>
 <p>Approximates:</p>
@@ -1000,9 +1010,9 @@ will not be run here.</p>
 <p><strong>Returns:</strong> <em>void</em></p>
 <hr/>
 <h3 id="onblock">onBlock<a class="headerlink" href="#onblock" title="Permanent link">¶</a></h3>
-<p>▸ <strong>onBlock</strong>(<code>block</code>: BeaconBlock, <code>state</code>: BeaconState, <code>justifiedBalances?</code>: Gwei[]): <em>void</em></p>
+<p>▸ <strong>onBlock</strong>(<code>block</code>: allForks.BeaconBlock, <code>state</code>: allForks.BeaconState, <code>justifiedBalances?</code>: Gwei[]): <em>void</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#onblock">onBlock</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:120</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:121</p>
 <p>Add <code>block</code> to the fork choice DAG.</p>
 <h2 id="specification_3">Specification<a class="headerlink" href="#specification_3" title="Permanent link">¶</a></h2>
 <p>Approximates:</p>
@@ -1024,11 +1034,11 @@ This ensures that the forkchoice is never out of sync.</p>
 <tbody>
 <tr>
 <td><code>block</code></td>
-<td>BeaconBlock</td>
+<td>allForks.BeaconBlock</td>
 </tr>
 <tr>
 <td><code>state</code></td>
-<td>BeaconState</td>
+<td>allForks.BeaconState</td>
 </tr>
 <tr>
 <td><code>justifiedBalances?</code></td>
@@ -1041,7 +1051,7 @@ This ensures that the forkchoice is never out of sync.</p>
 <h3 id="prune">prune<a class="headerlink" href="#prune" title="Permanent link">¶</a></h3>
 <p>▸ <strong>prune</strong>(<code>finalizedRoot</code>: phase0.Root): <em>IBlockSummary[]</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#prune">prune</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:166</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:167</p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -1062,7 +1072,7 @@ This ensures that the forkchoice is never out of sync.</p>
 <h3 id="setprunethreshold">setPruneThreshold<a class="headerlink" href="#setprunethreshold" title="Permanent link">¶</a></h3>
 <p>▸ <strong>setPruneThreshold</strong>(<code>threshold</code>: number): <em>void</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#setprunethreshold">setPruneThreshold</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:167</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:168</p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -1083,7 +1093,7 @@ This ensures that the forkchoice is never out of sync.</p>
 <h3 id="updatetime">updateTime<a class="headerlink" href="#updatetime" title="Permanent link">¶</a></h3>
 <p>▸ <strong>updateTime</strong>(<code>currentSlot</code>: Slot): <em>void</em></p>
 <p><em>Inherited from <a href="./">LodestarForkChoice</a>.<a href="./#updatetime">updateTime</a></em></p>
-<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:144</p>
+<p>Defined in packages/fork-choice/lib/forkChoice/forkChoice.d.ts:145</p>
 <p>Call <code>onTick</code> for all slots between <code>fcStore.getCurrentSlot()</code> and the provided <code>currentSlot</code>.</p>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -1136,7 +1146,7 @@ This ensures that the forkchoice is never out of sync.</p>
 <div class="md-dialog" data-md-component="dialog">
 <div class="md-dialog__inner md-typeset"></div>
 </div>
-<script id="__config" type="application/json">{"base": "../../../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}, "search": "../../../../assets/javascripts/workers/search.fe42c31b.min.js", "version": null}</script>
-<script src="../../../../assets/javascripts/bundle.65ce87ac.min.js"></script>
+<script id="__config" type="application/json">{"base": "../../../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}, "search": "../../../../assets/javascripts/workers/search.4fa0e4ee.min.js", "version": null}</script>
+<script src="../../../../assets/javascripts/bundle.1d3bfcf1.min.js"></script>
 </body>
 </html>

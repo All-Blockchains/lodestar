@@ -8,17 +8,17 @@
 <meta content="Lodestar documentation - Typescript Eth2.0 client" name="description"/>
 <link href="https://chainsafe.github.io/lodestar/packages/beacon-state-transition/modules/phase0/" rel="canonical"/>
 <link href="../../../../images/favicon.ico" rel="icon"/>
-<meta content="mkdocs-1.1.2, mkdocs-material-7.0.7" name="generator"/>
+<meta content="mkdocs-1.1.2, mkdocs-material-7.1.4" name="generator"/>
 <title>Phase0 - Lodestar documentation</title>
-<link href="../../../../assets/stylesheets/main.c772ddf0.min.css" rel="stylesheet"/>
-<link href="../../../../assets/stylesheets/palette.7fa14f5b.min.css" rel="stylesheet"/>
+<link href="../../../../assets/stylesheets/main.bde7dde4.min.css" rel="stylesheet"/>
+<link href="../../../../assets/stylesheets/palette.ef6f36e2.min.css" rel="stylesheet"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700%7CRoboto+Mono&amp;display=fallback" rel="stylesheet"/>
 <style>:root{--md-text-font-family:"Roboto";--md-code-font-family:"Roboto Mono"}</style>
 <link href="../../../../stylesheets/extras.css" rel="stylesheet"/>
 </head>
 <body data-md-color-accent="black" data-md-color-primary="" data-md-color-scheme="preference" dir="ltr">
-<script>matchMedia("(prefers-color-scheme: dark)").matches&&document.body.setAttribute("data-md-color-scheme","slate")</script>
+<script>function __prefix(e){return new URL("../../../..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
 <label class="md-overlay" for="__drawer"></label>
@@ -52,8 +52,6 @@
           </span>
 </div>
 </div>
-</div>
-<div class="md-header__options">
 </div>
 <label class="md-header__button md-icon" for="__search">
 <svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
@@ -259,11 +257,6 @@
 <nav aria-label="References" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#attestation_subnet_count">
-    ATTESTATION_SUBNET_COUNT
-  </a>
-</li>
-<li class="md-nav__item">
 <a class="md-nav__link" href="#aggregateandproof">
     AggregateAndProof
   </a>
@@ -286,6 +279,11 @@
 <li class="md-nav__item">
 <a class="md-nav__link" href="#attestationsubnets">
     AttestationSubnets
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#attesterdutiesapi">
+    AttesterDutiesApi
   </a>
 </li>
 <li class="md-nav__item">
@@ -424,11 +422,6 @@
   </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#deposit_contract_tree_depth">
-    DEPOSIT_CONTRACT_TREE_DEPTH
-  </a>
-</li>
-<li class="md-nav__item">
 <a class="md-nav__link" href="#deposit">
     Deposit
   </a>
@@ -529,23 +522,8 @@
   </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#iphase0ssztypes">
-    IPhase0SSZTypes
-  </a>
-</li>
-<li class="md-nav__item">
 <a class="md-nav__link" href="#indexedattestation">
     IndexedAttestation
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#justification_bits_length">
-    JUSTIFICATION_BITS_LENGTH
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#max_request_blocks">
-    MAX_REQUEST_BLOCKS
   </a>
 </li>
 <li class="md-nav__item">
@@ -559,13 +537,8 @@
   </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#p2p_error_message_max_length">
-    P2P_ERROR_MESSAGE_MAX_LENGTH
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#p2perrormessage">
-    P2pErrorMessage
+<a class="md-nav__link" href="#participationflags">
+    ParticipationFlags
   </a>
 </li>
 <li class="md-nav__item">
@@ -574,8 +547,18 @@
   </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#phase0ssztypes">
+    Phase0SSZTypes
+  </a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#ping">
     Ping
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#proposerdutiesapi">
+    ProposerDutiesApi
   </a>
 </li>
 <li class="md-nav__item">
@@ -586,26 +569,6 @@
 <li class="md-nav__item">
 <a class="md-nav__link" href="#proposerslashing">
     ProposerSlashing
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#reqresptypes">
-    ReqRespTypes
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#requestbody">
-    RequestBody
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#requestid">
-    RequestId
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#responsebody">
-    ResponseBody
   </a>
 </li>
 <li class="md-nav__item">
@@ -674,8 +637,18 @@
   </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#subcommitteeindex">
+    SubCommitteeIndex
+  </a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#subscribetocommitteesubnetpayload">
     SubscribeToCommitteeSubnetPayload
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#syncperiod">
+    SyncPeriod
   </a>
 </li>
 <li class="md-nav__item">
@@ -724,11 +697,6 @@
   </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#validatorflag">
-    ValidatorFlag
-  </a>
-</li>
-<li class="md-nav__item">
 <a class="md-nav__link" href="#validatorindex">
     ValidatorIndex
   </a>
@@ -751,11 +719,6 @@
 <li class="md-nav__item">
 <a class="md-nav__link" href="#voluntaryexit">
     VoluntaryExit
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#createiphase0ssztypes">
-    createIPhase0SSZTypes
   </a>
 </li>
 <li class="md-nav__item">
@@ -804,6 +767,11 @@
   </a>
 </li>
 <li class="md-nav__item">
+<a class="md-nav__link" href="#getphase0types">
+    getPhase0Types
+  </a>
+</li>
+<li class="md-nav__item">
 <a class="md-nav__link" href="#getproposerreward">
     getProposerReward
   </a>
@@ -821,11 +789,6 @@
 <li class="md-nav__item">
 <a class="md-nav__link" href="#isininactivityleak">
     isInInactivityLeak
-  </a>
-</li>
-<li class="md-nav__item">
-<a class="md-nav__link" href="#phase0typenames">
-    phase0TypeNames
   </a>
 </li>
 <li class="md-nav__item">
@@ -961,12 +924,12 @@
 <h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">¶</a></h2>
 <h3 id="references">References<a class="headerlink" href="#references" title="Permanent link">¶</a></h3>
 <ul>
-<li><a href="./#attestation_subnet_count">ATTESTATION_SUBNET_COUNT</a></li>
 <li><a href="./#aggregateandproof">AggregateAndProof</a></li>
 <li><a href="./#attestation">Attestation</a></li>
 <li><a href="./#attestationdata">AttestationData</a></li>
 <li><a href="./#attestationroothex">AttestationRootHex</a></li>
 <li><a href="./#attestationsubnets">AttestationSubnets</a></li>
+<li><a href="./#attesterdutiesapi">AttesterDutiesApi</a></li>
 <li><a href="./#attesterduty">AttesterDuty</a></li>
 <li><a href="./#attesterslashing">AttesterSlashing</a></li>
 <li><a href="./#blspubkey">BLSPubkey</a></li>
@@ -994,7 +957,6 @@
 <li><a href="./#committeeassignment">CommitteeAssignment</a></li>
 <li><a href="./#committeeindex">CommitteeIndex</a></li>
 <li><a href="./#contract">Contract</a></li>
-<li><a href="./#deposit_contract_tree_depth">DEPOSIT_CONTRACT_TREE_DEPTH</a></li>
 <li><a href="./#deposit">Deposit</a></li>
 <li><a href="./#depositdata">DepositData</a></li>
 <li><a href="./#depositevent">DepositEvent</a></li>
@@ -1015,22 +977,16 @@
 <li><a href="./#goodbye">Goodbye</a></li>
 <li><a href="./#gwei">Gwei</a></li>
 <li><a href="./#historicalbatch">HistoricalBatch</a></li>
-<li><a href="./#iphase0ssztypes">IPhase0SSZTypes</a></li>
 <li><a href="./#indexedattestation">IndexedAttestation</a></li>
-<li><a href="./#justification_bits_length">JUSTIFICATION_BITS_LENGTH</a></li>
-<li><a href="./#max_request_blocks">MAX_REQUEST_BLOCKS</a></li>
 <li><a href="./#metadata">Metadata</a></li>
 <li><a href="./#number64">Number64</a></li>
-<li><a href="./#p2p_error_message_max_length">P2P_ERROR_MESSAGE_MAX_LENGTH</a></li>
-<li><a href="./#p2perrormessage">P2pErrorMessage</a></li>
+<li><a href="./#participationflags">ParticipationFlags</a></li>
 <li><a href="./#pendingattestation">PendingAttestation</a></li>
+<li><a href="./#phase0ssztypes">Phase0SSZTypes</a></li>
 <li><a href="./#ping">Ping</a></li>
+<li><a href="./#proposerdutiesapi">ProposerDutiesApi</a></li>
 <li><a href="./#proposerduty">ProposerDuty</a></li>
 <li><a href="./#proposerslashing">ProposerSlashing</a></li>
-<li><a href="./#reqresptypes">ReqRespTypes</a></li>
-<li><a href="./#requestbody">RequestBody</a></li>
-<li><a href="./#requestid">RequestId</a></li>
-<li><a href="./#responsebody">ResponseBody</a></li>
 <li><a href="./#root">Root</a></li>
 <li><a href="./#signedaggregateandproof">SignedAggregateAndProof</a></li>
 <li><a href="./#signedbeaconblock">SignedBeaconBlock</a></li>
@@ -1044,7 +1000,9 @@
 <li><a href="./#slot">Slot</a></li>
 <li><a href="./#slotroot">SlotRoot</a></li>
 <li><a href="./#status">Status</a></li>
+<li><a href="./#subcommitteeindex">SubCommitteeIndex</a></li>
 <li><a href="./#subscribetocommitteesubnetpayload">SubscribeToCommitteeSubnetPayload</a></li>
+<li><a href="./#syncperiod">SyncPeriod</a></li>
 <li><a href="./#syncingstatus">SyncingStatus</a></li>
 <li><a href="./#uint128">Uint128</a></li>
 <li><a href="./#uint16">Uint16</a></li>
@@ -1054,13 +1012,11 @@
 <li><a href="./#uint8">Uint8</a></li>
 <li><a href="./#validator">Validator</a></li>
 <li><a href="./#validatorbalance">ValidatorBalance</a></li>
-<li><a href="./#validatorflag">ValidatorFlag</a></li>
 <li><a href="./#validatorindex">ValidatorIndex</a></li>
 <li><a href="./#validatorresponse">ValidatorResponse</a></li>
 <li><a href="./#validatorstatus">ValidatorStatus</a></li>
 <li><a href="./#version">Version</a></li>
 <li><a href="./#voluntaryexit">VoluntaryExit</a></li>
-<li><a href="./#createiphase0ssztypes">createIPhase0SSZTypes</a></li>
 <li><a href="./#fast">fast</a></li>
 <li><a href="./#getattestationcomponentdeltas">getAttestationComponentDeltas</a></li>
 <li><a href="./#getattestationdeltas">getAttestationDeltas</a></li>
@@ -1070,11 +1026,11 @@
 <li><a href="./#getheaddeltas">getHeadDeltas</a></li>
 <li><a href="./#getinactivitypenaltydeltas">getInactivityPenaltyDeltas</a></li>
 <li><a href="./#getinclusiondelaydeltas">getInclusionDelayDeltas</a></li>
+<li><a href="./#getphase0types">getPhase0Types</a></li>
 <li><a href="./#getproposerreward">getProposerReward</a></li>
 <li><a href="./#getsourcedeltas">getSourceDeltas</a></li>
 <li><a href="./#gettargetdeltas">getTargetDeltas</a></li>
 <li><a href="./#isininactivityleak">isInInactivityLeak</a></li>
-<li><a href="./#phase0typenames">phase0TypeNames</a></li>
 <li><a href="./#processattestation">processAttestation</a></li>
 <li><a href="./#processattesterslashing">processAttesterSlashing</a></li>
 <li><a href="./#processblock">processBlock</a></li>
@@ -1100,9 +1056,6 @@
 <li><a href="./#statetransition">stateTransition</a></li>
 </ul>
 <h2 id="references_1">References<a class="headerlink" href="#references_1" title="Permanent link">¶</a></h2>
-<h3 id="attestation_subnet_count">ATTESTATION_SUBNET_COUNT<a class="headerlink" href="#attestation_subnet_count" title="Permanent link">¶</a></h3>
-<p>• <strong>ATTESTATION_SUBNET_COUNT</strong>:</p>
-<hr/>
 <h3 id="aggregateandproof">AggregateAndProof<a class="headerlink" href="#aggregateandproof" title="Permanent link">¶</a></h3>
 <p>• <strong>AggregateAndProof</strong>:</p>
 <hr/>
@@ -1117,6 +1070,9 @@
 <hr/>
 <h3 id="attestationsubnets">AttestationSubnets<a class="headerlink" href="#attestationsubnets" title="Permanent link">¶</a></h3>
 <p>• <strong>AttestationSubnets</strong>:</p>
+<hr/>
+<h3 id="attesterdutiesapi">AttesterDutiesApi<a class="headerlink" href="#attesterdutiesapi" title="Permanent link">¶</a></h3>
+<p>• <strong>AttesterDutiesApi</strong>:</p>
 <hr/>
 <h3 id="attesterduty">AttesterDuty<a class="headerlink" href="#attesterduty" title="Permanent link">¶</a></h3>
 <p>• <strong>AttesterDuty</strong>:</p>
@@ -1199,9 +1155,6 @@
 <h3 id="contract">Contract<a class="headerlink" href="#contract" title="Permanent link">¶</a></h3>
 <p>• <strong>Contract</strong>:</p>
 <hr/>
-<h3 id="deposit_contract_tree_depth">DEPOSIT_CONTRACT_TREE_DEPTH<a class="headerlink" href="#deposit_contract_tree_depth" title="Permanent link">¶</a></h3>
-<p>• <strong>DEPOSIT_CONTRACT_TREE_DEPTH</strong>:</p>
-<hr/>
 <h3 id="deposit">Deposit<a class="headerlink" href="#deposit" title="Permanent link">¶</a></h3>
 <p>• <strong>Deposit</strong>:</p>
 <hr/>
@@ -1262,17 +1215,8 @@
 <h3 id="historicalbatch">HistoricalBatch<a class="headerlink" href="#historicalbatch" title="Permanent link">¶</a></h3>
 <p>• <strong>HistoricalBatch</strong>:</p>
 <hr/>
-<h3 id="iphase0ssztypes">IPhase0SSZTypes<a class="headerlink" href="#iphase0ssztypes" title="Permanent link">¶</a></h3>
-<p>• <strong>IPhase0SSZTypes</strong>:</p>
-<hr/>
 <h3 id="indexedattestation">IndexedAttestation<a class="headerlink" href="#indexedattestation" title="Permanent link">¶</a></h3>
 <p>• <strong>IndexedAttestation</strong>:</p>
-<hr/>
-<h3 id="justification_bits_length">JUSTIFICATION_BITS_LENGTH<a class="headerlink" href="#justification_bits_length" title="Permanent link">¶</a></h3>
-<p>• <strong>JUSTIFICATION_BITS_LENGTH</strong>:</p>
-<hr/>
-<h3 id="max_request_blocks">MAX_REQUEST_BLOCKS<a class="headerlink" href="#max_request_blocks" title="Permanent link">¶</a></h3>
-<p>• <strong>MAX_REQUEST_BLOCKS</strong>:</p>
 <hr/>
 <h3 id="metadata">Metadata<a class="headerlink" href="#metadata" title="Permanent link">¶</a></h3>
 <p>• <strong>Metadata</strong>:</p>
@@ -1280,35 +1224,26 @@
 <h3 id="number64">Number64<a class="headerlink" href="#number64" title="Permanent link">¶</a></h3>
 <p>• <strong>Number64</strong>:</p>
 <hr/>
-<h3 id="p2p_error_message_max_length">P2P_ERROR_MESSAGE_MAX_LENGTH<a class="headerlink" href="#p2p_error_message_max_length" title="Permanent link">¶</a></h3>
-<p>• <strong>P2P_ERROR_MESSAGE_MAX_LENGTH</strong>:</p>
-<hr/>
-<h3 id="p2perrormessage">P2pErrorMessage<a class="headerlink" href="#p2perrormessage" title="Permanent link">¶</a></h3>
-<p>• <strong>P2pErrorMessage</strong>:</p>
+<h3 id="participationflags">ParticipationFlags<a class="headerlink" href="#participationflags" title="Permanent link">¶</a></h3>
+<p>• <strong>ParticipationFlags</strong>:</p>
 <hr/>
 <h3 id="pendingattestation">PendingAttestation<a class="headerlink" href="#pendingattestation" title="Permanent link">¶</a></h3>
 <p>• <strong>PendingAttestation</strong>:</p>
 <hr/>
+<h3 id="phase0ssztypes">Phase0SSZTypes<a class="headerlink" href="#phase0ssztypes" title="Permanent link">¶</a></h3>
+<p>• <strong>Phase0SSZTypes</strong>:</p>
+<hr/>
 <h3 id="ping">Ping<a class="headerlink" href="#ping" title="Permanent link">¶</a></h3>
 <p>• <strong>Ping</strong>:</p>
+<hr/>
+<h3 id="proposerdutiesapi">ProposerDutiesApi<a class="headerlink" href="#proposerdutiesapi" title="Permanent link">¶</a></h3>
+<p>• <strong>ProposerDutiesApi</strong>:</p>
 <hr/>
 <h3 id="proposerduty">ProposerDuty<a class="headerlink" href="#proposerduty" title="Permanent link">¶</a></h3>
 <p>• <strong>ProposerDuty</strong>:</p>
 <hr/>
 <h3 id="proposerslashing">ProposerSlashing<a class="headerlink" href="#proposerslashing" title="Permanent link">¶</a></h3>
 <p>• <strong>ProposerSlashing</strong>:</p>
-<hr/>
-<h3 id="reqresptypes">ReqRespTypes<a class="headerlink" href="#reqresptypes" title="Permanent link">¶</a></h3>
-<p>• <strong>ReqRespTypes</strong>:</p>
-<hr/>
-<h3 id="requestbody">RequestBody<a class="headerlink" href="#requestbody" title="Permanent link">¶</a></h3>
-<p>• <strong>RequestBody</strong>:</p>
-<hr/>
-<h3 id="requestid">RequestId<a class="headerlink" href="#requestid" title="Permanent link">¶</a></h3>
-<p>• <strong>RequestId</strong>:</p>
-<hr/>
-<h3 id="responsebody">ResponseBody<a class="headerlink" href="#responsebody" title="Permanent link">¶</a></h3>
-<p>• <strong>ResponseBody</strong>:</p>
 <hr/>
 <h3 id="root">Root<a class="headerlink" href="#root" title="Permanent link">¶</a></h3>
 <p>• <strong>Root</strong>:</p>
@@ -1349,8 +1284,14 @@
 <h3 id="status">Status<a class="headerlink" href="#status" title="Permanent link">¶</a></h3>
 <p>• <strong>Status</strong>:</p>
 <hr/>
+<h3 id="subcommitteeindex">SubCommitteeIndex<a class="headerlink" href="#subcommitteeindex" title="Permanent link">¶</a></h3>
+<p>• <strong>SubCommitteeIndex</strong>:</p>
+<hr/>
 <h3 id="subscribetocommitteesubnetpayload">SubscribeToCommitteeSubnetPayload<a class="headerlink" href="#subscribetocommitteesubnetpayload" title="Permanent link">¶</a></h3>
 <p>• <strong>SubscribeToCommitteeSubnetPayload</strong>:</p>
+<hr/>
+<h3 id="syncperiod">SyncPeriod<a class="headerlink" href="#syncperiod" title="Permanent link">¶</a></h3>
+<p>• <strong>SyncPeriod</strong>:</p>
 <hr/>
 <h3 id="syncingstatus">SyncingStatus<a class="headerlink" href="#syncingstatus" title="Permanent link">¶</a></h3>
 <p>• <strong>SyncingStatus</strong>:</p>
@@ -1379,9 +1320,6 @@
 <h3 id="validatorbalance">ValidatorBalance<a class="headerlink" href="#validatorbalance" title="Permanent link">¶</a></h3>
 <p>• <strong>ValidatorBalance</strong>:</p>
 <hr/>
-<h3 id="validatorflag">ValidatorFlag<a class="headerlink" href="#validatorflag" title="Permanent link">¶</a></h3>
-<p>• <strong>ValidatorFlag</strong>:</p>
-<hr/>
 <h3 id="validatorindex">ValidatorIndex<a class="headerlink" href="#validatorindex" title="Permanent link">¶</a></h3>
 <p>• <strong>ValidatorIndex</strong>:</p>
 <hr/>
@@ -1396,9 +1334,6 @@
 <hr/>
 <h3 id="voluntaryexit">VoluntaryExit<a class="headerlink" href="#voluntaryexit" title="Permanent link">¶</a></h3>
 <p>• <strong>VoluntaryExit</strong>:</p>
-<hr/>
-<h3 id="createiphase0ssztypes">createIPhase0SSZTypes<a class="headerlink" href="#createiphase0ssztypes" title="Permanent link">¶</a></h3>
-<p>• <strong>createIPhase0SSZTypes</strong>:</p>
 <hr/>
 <h3 id="fast">fast<a class="headerlink" href="#fast" title="Permanent link">¶</a></h3>
 <p>• <strong>fast</strong>:</p>
@@ -1427,6 +1362,9 @@
 <h3 id="getinclusiondelaydeltas">getInclusionDelayDeltas<a class="headerlink" href="#getinclusiondelaydeltas" title="Permanent link">¶</a></h3>
 <p>• <strong>getInclusionDelayDeltas</strong>:</p>
 <hr/>
+<h3 id="getphase0types">getPhase0Types<a class="headerlink" href="#getphase0types" title="Permanent link">¶</a></h3>
+<p>• <strong>getPhase0Types</strong>:</p>
+<hr/>
 <h3 id="getproposerreward">getProposerReward<a class="headerlink" href="#getproposerreward" title="Permanent link">¶</a></h3>
 <p>• <strong>getProposerReward</strong>:</p>
 <hr/>
@@ -1438,9 +1376,6 @@
 <hr/>
 <h3 id="isininactivityleak">isInInactivityLeak<a class="headerlink" href="#isininactivityleak" title="Permanent link">¶</a></h3>
 <p>• <strong>isInInactivityLeak</strong>:</p>
-<hr/>
-<h3 id="phase0typenames">phase0TypeNames<a class="headerlink" href="#phase0typenames" title="Permanent link">¶</a></h3>
-<p>• <strong>phase0TypeNames</strong>:</p>
 <hr/>
 <h3 id="processattestation">processAttestation<a class="headerlink" href="#processattestation" title="Permanent link">¶</a></h3>
 <p>• <strong>processAttestation</strong>:</p>
@@ -1545,7 +1480,7 @@
 <div class="md-dialog" data-md-component="dialog">
 <div class="md-dialog__inner md-typeset"></div>
 </div>
-<script id="__config" type="application/json">{"base": "../../../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}, "search": "../../../../assets/javascripts/workers/search.fe42c31b.min.js", "version": null}</script>
-<script src="../../../../assets/javascripts/bundle.65ce87ac.min.js"></script>
+<script id="__config" type="application/json">{"base": "../../../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}, "search": "../../../../assets/javascripts/workers/search.4fa0e4ee.min.js", "version": null}</script>
+<script src="../../../../assets/javascripts/bundle.1d3bfcf1.min.js"></script>
 </body>
 </html>

@@ -8,17 +8,17 @@
 <meta content="Lodestar documentation - Typescript Eth2.0 client" name="description"/>
 <link href="https://chainsafe.github.io/lodestar/packages/lodestar/modules/chain_validation_utils/" rel="canonical"/>
 <link href="../../../../images/favicon.ico" rel="icon"/>
-<meta content="mkdocs-1.1.2, mkdocs-material-7.0.7" name="generator"/>
+<meta content="mkdocs-1.1.2, mkdocs-material-7.1.4" name="generator"/>
 <title>Chain validation utils - Lodestar documentation</title>
-<link href="../../../../assets/stylesheets/main.c772ddf0.min.css" rel="stylesheet"/>
-<link href="../../../../assets/stylesheets/palette.7fa14f5b.min.css" rel="stylesheet"/>
+<link href="../../../../assets/stylesheets/main.bde7dde4.min.css" rel="stylesheet"/>
+<link href="../../../../assets/stylesheets/palette.ef6f36e2.min.css" rel="stylesheet"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700%7CRoboto+Mono&amp;display=fallback" rel="stylesheet"/>
 <style>:root{--md-text-font-family:"Roboto";--md-code-font-family:"Roboto Mono"}</style>
 <link href="../../../../stylesheets/extras.css" rel="stylesheet"/>
 </head>
 <body data-md-color-accent="black" data-md-color-primary="" data-md-color-scheme="preference" dir="ltr">
-<script>matchMedia("(prefers-color-scheme: dark)").matches&&document.body.setAttribute("data-md-color-scheme","slate")</script>
+<script>function __prefix(e){return new URL("../../../..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
 <label class="md-overlay" for="__drawer"></label>
@@ -52,8 +52,6 @@
           </span>
 </div>
 </div>
-</div>
-<div class="md-header__options">
 </div>
 <label class="md-header__button md-icon" for="__search">
 <svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
@@ -264,13 +262,13 @@
 <nav aria-label="References" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#isvalidaggregateandproofsignature">
-    isValidAggregateAndProofSignature
+<a class="md-nav__link" href="#getaggregateandproofsignatureset">
+    getAggregateAndProofSignatureSet
   </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#isvalidselectionproofsignature">
-    isValidSelectionProofSignature
+<a class="md-nav__link" href="#getselectionproofsignatureset">
+    getSelectionProofSignatureSet
   </a>
 </li>
 </ul>
@@ -283,13 +281,13 @@
 <nav aria-label="Functions" class="md-nav">
 <ul class="md-nav__list">
 <li class="md-nav__item">
-<a class="md-nav__link" href="#isvalidaggregateandproofsignature_1">
-    isValidAggregateAndProofSignature
+<a class="md-nav__link" href="#getaggregateandproofsignatureset_1">
+    getAggregateAndProofSignatureSet
   </a>
 </li>
 <li class="md-nav__item">
-<a class="md-nav__link" href="#isvalidselectionproofsignature_1">
-    isValidSelectionProofSignature
+<a class="md-nav__link" href="#getselectionproofsignatureset_1">
+    getSelectionProofSignatureSet
   </a>
 </li>
 </ul>
@@ -310,24 +308,24 @@
 <h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">¶</a></h2>
 <h3 id="references">References<a class="headerlink" href="#references" title="Permanent link">¶</a></h3>
 <ul>
-<li><a href="./#isvalidaggregateandproofsignature">isValidAggregateAndProofSignature</a></li>
-<li><a href="./#isvalidselectionproofsignature">isValidSelectionProofSignature</a></li>
+<li><a href="./#getaggregateandproofsignatureset">getAggregateAndProofSignatureSet</a></li>
+<li><a href="./#getselectionproofsignatureset">getSelectionProofSignatureSet</a></li>
 </ul>
 <h3 id="functions">Functions<a class="headerlink" href="#functions" title="Permanent link">¶</a></h3>
 <ul>
-<li><a href="./#isvalidaggregateandproofsignature">isValidAggregateAndProofSignature</a></li>
-<li><a href="./#isvalidselectionproofsignature">isValidSelectionProofSignature</a></li>
+<li><a href="./#getaggregateandproofsignatureset">getAggregateAndProofSignatureSet</a></li>
+<li><a href="./#getselectionproofsignatureset">getSelectionProofSignatureSet</a></li>
 </ul>
 <h2 id="references_1">References<a class="headerlink" href="#references_1" title="Permanent link">¶</a></h2>
-<h3 id="isvalidaggregateandproofsignature">isValidAggregateAndProofSignature<a class="headerlink" href="#isvalidaggregateandproofsignature" title="Permanent link">¶</a></h3>
-<p>• <strong>isValidAggregateAndProofSignature</strong>:</p>
+<h3 id="getaggregateandproofsignatureset">getAggregateAndProofSignatureSet<a class="headerlink" href="#getaggregateandproofsignatureset" title="Permanent link">¶</a></h3>
+<p>• <strong>getAggregateAndProofSignatureSet</strong>:</p>
 <hr/>
-<h3 id="isvalidselectionproofsignature">isValidSelectionProofSignature<a class="headerlink" href="#isvalidselectionproofsignature" title="Permanent link">¶</a></h3>
-<p>• <strong>isValidSelectionProofSignature</strong>:</p>
+<h3 id="getselectionproofsignatureset">getSelectionProofSignatureSet<a class="headerlink" href="#getselectionproofsignatureset" title="Permanent link">¶</a></h3>
+<p>• <strong>getSelectionProofSignatureSet</strong>:</p>
 <h2 id="functions_1">Functions<a class="headerlink" href="#functions_1" title="Permanent link">¶</a></h2>
-<h3 id="isvalidaggregateandproofsignature_1">isValidAggregateAndProofSignature<a class="headerlink" href="#isvalidaggregateandproofsignature_1" title="Permanent link">¶</a></h3>
-<p>▸ <strong>isValidAggregateAndProofSignature</strong>(<code>config</code>: IBeaconConfig, <code>state</code>: BeaconState, <code>epoch</code>: Epoch, <code>aggregator</code>: PublicKey, <code>aggregateAndProof</code>: SignedAggregateAndProof): <em>boolean</em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/chain/validation/utils/signature.ts#L19">packages/lodestar/src/chain/validation/utils/signature.ts:19</a></em></p>
+<h3 id="getaggregateandproofsignatureset_1">getAggregateAndProofSignatureSet<a class="headerlink" href="#getaggregateandproofsignatureset_1" title="Permanent link">¶</a></h3>
+<p>▸ <strong>getAggregateAndProofSignatureSet</strong>(<code>config</code>: IBeaconConfig, <code>state</code>: allForks.BeaconState, <code>epoch</code>: Epoch, <code>aggregator</code>: PublicKey, <code>aggregateAndProof</code>: SignedAggregateAndProof): <em>ISignatureSet</em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/chain/validation/utils/signature.ts#L30">packages/lodestar/src/chain/validation/utils/signature.ts:30</a></em></p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -343,7 +341,7 @@
 </tr>
 <tr>
 <td><code>state</code></td>
-<td>BeaconState</td>
+<td>allForks.BeaconState</td>
 </tr>
 <tr>
 <td><code>epoch</code></td>
@@ -359,11 +357,11 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Returns:</strong> <em>boolean</em></p>
+<p><strong>Returns:</strong> <em>ISignatureSet</em></p>
 <hr/>
-<h3 id="isvalidselectionproofsignature_1">isValidSelectionProofSignature<a class="headerlink" href="#isvalidselectionproofsignature_1" title="Permanent link">¶</a></h3>
-<p>▸ <strong>isValidSelectionProofSignature</strong>(<code>config</code>: IBeaconConfig, <code>state</code>: BeaconState, <code>slot</code>: Slot, <code>aggregator</code>: PublicKey, <code>signature</code>: Uint8Array): <em>boolean</em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/chain/validation/utils/signature.ts#L6">packages/lodestar/src/chain/validation/utils/signature.ts:6</a></em></p>
+<h3 id="getselectionproofsignatureset_1">getSelectionProofSignatureSet<a class="headerlink" href="#getselectionproofsignatureset_1" title="Permanent link">¶</a></h3>
+<p>▸ <strong>getSelectionProofSignatureSet</strong>(<code>config</code>: IBeaconConfig, <code>state</code>: allForks.BeaconState, <code>slot</code>: Slot, <code>aggregator</code>: PublicKey, <code>aggregateAndProof</code>: SignedAggregateAndProof): <em>ISignatureSet</em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/chain/validation/utils/signature.ts#L12">packages/lodestar/src/chain/validation/utils/signature.ts:12</a></em></p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -379,7 +377,7 @@
 </tr>
 <tr>
 <td><code>state</code></td>
-<td>BeaconState</td>
+<td>allForks.BeaconState</td>
 </tr>
 <tr>
 <td><code>slot</code></td>
@@ -390,12 +388,12 @@
 <td>PublicKey</td>
 </tr>
 <tr>
-<td><code>signature</code></td>
-<td>Uint8Array</td>
+<td><code>aggregateAndProof</code></td>
+<td>SignedAggregateAndProof</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Returns:</strong> <em>boolean</em></p>
+<p><strong>Returns:</strong> <em>ISignatureSet</em></p>
 </article>
 </div>
 </div>
@@ -431,7 +429,7 @@
 <div class="md-dialog" data-md-component="dialog">
 <div class="md-dialog__inner md-typeset"></div>
 </div>
-<script id="__config" type="application/json">{"base": "../../../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}, "search": "../../../../assets/javascripts/workers/search.fe42c31b.min.js", "version": null}</script>
-<script src="../../../../assets/javascripts/bundle.65ce87ac.min.js"></script>
+<script id="__config" type="application/json">{"base": "../../../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}, "search": "../../../../assets/javascripts/workers/search.4fa0e4ee.min.js", "version": null}</script>
+<script src="../../../../assets/javascripts/bundle.1d3bfcf1.min.js"></script>
 </body>
 </html>

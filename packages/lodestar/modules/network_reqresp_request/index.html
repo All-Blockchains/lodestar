@@ -8,17 +8,17 @@
 <meta content="Lodestar documentation - Typescript Eth2.0 client" name="description"/>
 <link href="https://chainsafe.github.io/lodestar/packages/lodestar/modules/network_reqresp_request/" rel="canonical"/>
 <link href="../../../../images/favicon.ico" rel="icon"/>
-<meta content="mkdocs-1.1.2, mkdocs-material-7.0.7" name="generator"/>
+<meta content="mkdocs-1.1.2, mkdocs-material-7.1.4" name="generator"/>
 <title>Network reqresp request - Lodestar documentation</title>
-<link href="../../../../assets/stylesheets/main.c772ddf0.min.css" rel="stylesheet"/>
-<link href="../../../../assets/stylesheets/palette.7fa14f5b.min.css" rel="stylesheet"/>
+<link href="../../../../assets/stylesheets/main.bde7dde4.min.css" rel="stylesheet"/>
+<link href="../../../../assets/stylesheets/palette.ef6f36e2.min.css" rel="stylesheet"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,400i,700%7CRoboto+Mono&amp;display=fallback" rel="stylesheet"/>
 <style>:root{--md-text-font-family:"Roboto";--md-code-font-family:"Roboto Mono"}</style>
 <link href="../../../../stylesheets/extras.css" rel="stylesheet"/>
 </head>
 <body data-md-color-accent="black" data-md-color-primary="" data-md-color-scheme="preference" dir="ltr">
-<script>matchMedia("(prefers-color-scheme: dark)").matches&&document.body.setAttribute("data-md-color-scheme","slate")</script>
+<script>function __prefix(e){return new URL("../../../..",location).pathname+"."+e}function __get(e,t=localStorage){return JSON.parse(t.getItem(__prefix(e)))}</script>
 <input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
 <input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
 <label class="md-overlay" for="__drawer"></label>
@@ -52,8 +52,6 @@
           </span>
 </div>
 </div>
-</div>
-<div class="md-header__options">
 </div>
 <label class="md-header__button md-icon" for="__search">
 <svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5z"></path></svg>
@@ -283,6 +281,20 @@
     RequestErrorType
   </a>
 </li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#sendrequestmodules">
+    SendRequestModules
+  </a>
+<nav aria-label="SendRequestModules" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#type-declaration">
+    Type declaration:
+  </a>
+</li>
+</ul>
+</nav>
+</li>
 </ul>
 </nav>
 </li>
@@ -295,6 +307,11 @@
 <li class="md-nav__item">
 <a class="md-nav__link" href="#collectresponses">
     collectResponses
+  </a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#maxtotalresponsetimeout">
+    maxTotalResponseTimeout
   </a>
 </li>
 <li class="md-nav__item">
@@ -349,10 +366,12 @@
 <h3 id="type-aliases">Type aliases<a class="headerlink" href="#type-aliases" title="Permanent link">¶</a></h3>
 <ul>
 <li><a href="./#requesterrortype">RequestErrorType</a></li>
+<li><a href="./#sendrequestmodules">SendRequestModules</a></li>
 </ul>
 <h3 id="functions">Functions<a class="headerlink" href="#functions" title="Permanent link">¶</a></h3>
 <ul>
 <li><a href="./#collectresponses">collectResponses</a></li>
+<li><a href="./#maxtotalresponsetimeout">maxTotalResponseTimeout</a></li>
 <li><a href="./#rendererrormessage">renderErrorMessage</a></li>
 <li><a href="./#responsestatuserrortorequesterror">responseStatusErrorToRequestError</a></li>
 <li><a href="./#responsetimeoutshandler">responseTimeoutsHandler</a></li>
@@ -360,18 +379,37 @@
 </ul>
 <h2 id="type-aliases_1">Type aliases<a class="headerlink" href="#type-aliases_1" title="Permanent link">¶</a></h2>
 <h3 id="requesterrortype">RequestErrorType<a class="headerlink" href="#requesterrortype" title="Permanent link">¶</a></h3>
-<p>Ƭ <strong>RequestErrorType</strong>: <em>object | object | object | object | object | object | object | object | object | object</em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/network/reqresp/request/errors.ts#L29">packages/lodestar/src/network/reqresp/request/errors.ts:29</a></em></p>
+<p>Ƭ <strong>RequestErrorType</strong>: <em>object | object | object | object | object | object | object | object | object | object | object</em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/network/reqresp/request/errors.ts#L32">packages/lodestar/src/network/reqresp/request/errors.ts:32</a></em></p>
+<hr/>
+<h3 id="sendrequestmodules">SendRequestModules<a class="headerlink" href="#sendrequestmodules" title="Permanent link">¶</a></h3>
+<p>Ƭ <strong>SendRequestModules</strong>: <em>object</em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/network/reqresp/request/index.ts#L29">packages/lodestar/src/network/reqresp/request/index.ts:29</a></em></p>
+<h4 id="type-declaration">Type declaration:<a class="headerlink" href="#type-declaration" title="Permanent link">¶</a></h4>
+<ul>
+<li>
+<p><strong>config</strong>: <em>IBeaconConfig</em></p>
+</li>
+<li>
+<p><strong>forkDigestContext</strong>: <em><a href="../util/#iforkdigestcontext">IForkDigestContext</a></em></p>
+</li>
+<li>
+<p><strong>libp2p</strong>: <em>Libp2p</em></p>
+</li>
+<li>
+<p><strong>logger</strong>: <em>ILogger</em></p>
+</li>
+</ul>
 <h2 id="functions_1">Functions<a class="headerlink" href="#functions_1" title="Permanent link">¶</a></h2>
 <h3 id="collectresponses">collectResponses<a class="headerlink" href="#collectresponses" title="Permanent link">¶</a></h3>
-<p>▸ <strong>collectResponses</strong>‹<strong>T</strong>›(<code>method</code>: <a href="../../enums/constants.method/">Method</a>, <code>maxResponses?</code>: undefined | number): <em>function</em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/network/reqresp/request/collectResponses.ts#L13">packages/lodestar/src/network/reqresp/request/collectResponses.ts:13</a></em></p>
+<p>▸ <strong>collectResponses</strong>‹<strong>T</strong>›(<code>method</code>: <a href="../../enums/network_reqresp.method/">Method</a>, <code>maxResponses?</code>: undefined | number): <em>function</em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/network/reqresp/request/collectResponses.ts#L11">packages/lodestar/src/network/reqresp/request/collectResponses.ts:11</a></em></p>
 <p>Sink for <code>&lt;response_chunk&gt;*</code>, from
 <div class="highlight"><pre><span></span><code>response <span class="o">::=</span> <span class="p">&lt;</span><span class="nc">response_chunk</span><span class="p">&gt;</span>*
 </code></pre></div>
 Note: <code>response</code> has zero or more chunks for SSZ-list responses or exactly one chunk for non-list</p>
 <p><strong>Type parameters:</strong></p>
-<p>▪ <strong>T</strong>: <em>phase0.ResponseBody | phase0.ResponseBody[]</em></p>
+<p>▪ <strong>T</strong>: <em><a href="../network_reqresp/#responsebody">ResponseBody</a> | <a href="../network_reqresp/#responsebody">ResponseBody</a>[]</em></p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -383,7 +421,7 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 <tbody>
 <tr>
 <td><code>method</code></td>
-<td><a href="../../enums/constants.method/">Method</a></td>
+<td><a href="../../enums/network_reqresp.method/">Method</a></td>
 </tr>
 <tr>
 <td><code>maxResponses?</code></td>
@@ -392,7 +430,7 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 </tbody>
 </table>
 <p><strong>Returns:</strong> <em>function</em></p>
-<p>▸ (<code>source</code>: AsyncIterable‹phase0.ResponseBody›): <em>Promise‹T›</em></p>
+<p>▸ (<code>source</code>: AsyncIterable‹<a href="../network_reqresp/#responsebody">ResponseBody</a>›): <em>Promise‹T›</em></p>
 <p><strong>Parameters:</strong></p>
 <table>
 <thead>
@@ -404,14 +442,42 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 <tbody>
 <tr>
 <td><code>source</code></td>
-<td>AsyncIterable‹phase0.ResponseBody›</td>
+<td>AsyncIterable‹<a href="../network_reqresp/#responsebody">ResponseBody</a>›</td>
 </tr>
 </tbody>
 </table>
 <hr/>
+<h3 id="maxtotalresponsetimeout">maxTotalResponseTimeout<a class="headerlink" href="#maxtotalresponsetimeout" title="Permanent link">¶</a></h3>
+<p>▸ <strong>maxTotalResponseTimeout</strong>(<code>maxResponses</code>: number, <code>options?</code>: Partial‹typeof timeoutOptions›): <em>number</em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/network/reqresp/request/responseTimeoutsHandler.ts#L9">packages/lodestar/src/network/reqresp/request/responseTimeoutsHandler.ts:9</a></em></p>
+<p>Returns the maximum total timeout possible for a response. See @responseTimeoutsHandler</p>
+<p><strong>Parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Type</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxResponses</code></td>
+<td>number</td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>options?</code></td>
+<td>Partial‹typeof timeoutOptions›</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <em>number</em></p>
+<hr/>
 <h3 id="rendererrormessage">renderErrorMessage<a class="headerlink" href="#rendererrormessage" title="Permanent link">¶</a></h3>
 <p>▸ <strong>renderErrorMessage</strong>(<code>type</code>: <a href="./#requesterrortype">RequestErrorType</a>): <em>string | undefined</em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/network/reqresp/request/errors.ts#L82">packages/lodestar/src/network/reqresp/request/errors.ts:82</a></em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/network/reqresp/request/errors.ts#L86">packages/lodestar/src/network/reqresp/request/errors.ts:86</a></em></p>
 <p>Render responder's errorMessage directly in main's error.message for easier debugging</p>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -432,7 +498,7 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 <hr/>
 <h3 id="responsestatuserrortorequesterror">responseStatusErrorToRequestError<a class="headerlink" href="#responsestatuserrortorequesterror" title="Permanent link">¶</a></h3>
 <p>▸ <strong>responseStatusErrorToRequestError</strong>(<code>e</code>: <a href="../../classes/network_reqresp_response.responseerror/">ResponseError</a>): <em><a href="./#requesterrortype">RequestErrorType</a></em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/network/reqresp/request/errors.ts#L67">packages/lodestar/src/network/reqresp/request/errors.ts:67</a></em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/network/reqresp/request/errors.ts#L71">packages/lodestar/src/network/reqresp/request/errors.ts:71</a></em></p>
 <p>Parse response status errors into detailed request errors for each status code for easier debugging</p>
 <p><strong>Parameters:</strong></p>
 <table>
@@ -453,7 +519,7 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 <hr/>
 <h3 id="responsetimeoutshandler">responseTimeoutsHandler<a class="headerlink" href="#responsetimeoutshandler" title="Permanent link">¶</a></h3>
 <p>▸ <strong>responseTimeoutsHandler</strong>‹<strong>T</strong>›(<code>responseDecoder</code>: function, <code>options?</code>: Partial‹typeof timeoutOptions›): <em>function</em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/network/reqresp/request/responseTimeoutsHandler.ts#L13">packages/lodestar/src/network/reqresp/request/responseTimeoutsHandler.ts:13</a></em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/network/reqresp/request/responseTimeoutsHandler.ts#L19">packages/lodestar/src/network/reqresp/request/responseTimeoutsHandler.ts:19</a></em></p>
 <p>Wraps responseDecoder to isolate the logic that handles response timeouts.
 - TTFB_TIMEOUT: The requester MUST wait a maximum of TTFB_TIMEOUT for the first response byte to arrive
 - RESP_TIMEOUT: Requester allows a further RESP_TIMEOUT for each subsequent response_chunk</p>
@@ -497,8 +563,8 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 </table>
 <hr/>
 <h3 id="sendrequest">sendRequest<a class="headerlink" href="#sendrequest" title="Permanent link">¶</a></h3>
-<p>▸ <strong>sendRequest</strong>‹<strong>T</strong>›(<code>__namedParameters</code>: object, <code>peerId</code>: PeerId, <code>method</code>: <a href="../../enums/constants.method/">Method</a>, <code>encoding</code>: <a href="../../enums/constants.reqrespencoding/">ReqRespEncoding</a>, <code>requestBody</code>: phase0.RequestBody, <code>maxResponses?</code>: undefined | number, <code>signal?</code>: AbortSignal, <code>options?</code>: Partial‹typeof timeoutOptions›, <code>requestId</code>: number): <em>Promise‹T›</em></p>
-<p><em>Defined in <a href="https://github.com/ChainSafe/lodestar/blob/b2a1e30/packages/lodestar/src/network/reqresp/request/index.ts#L37">packages/lodestar/src/network/reqresp/request/index.ts:37</a></em></p>
+<p>▸ <strong>sendRequest</strong>‹<strong>T</strong>›(<code>__namedParameters</code>: object, <code>peerId</code>: PeerId, <code>method</code>: <a href="../../enums/network_reqresp.method/">Method</a>, <code>encoding</code>: <a href="../../enums/network_reqresp.encoding/">Encoding</a>, <code>versions</code>: <a href="../../enums/network_reqresp.version/">Version</a>[], <code>requestBody</code>: <a href="../network_reqresp/#requestbody">RequestBody</a>, <code>maxResponses</code>: number, <code>signal?</code>: AbortSignal, <code>options?</code>: Partial‹typeof timeoutOptions›, <code>requestId</code>: number): <em>Promise‹T›</em></p>
+<p><em>Defined in <a href="https://github.com/All-Blockchains/lodestar/blob/88e1280/packages/lodestar/src/network/reqresp/request/index.ts#L47">packages/lodestar/src/network/reqresp/request/index.ts:47</a></em></p>
 <p>Sends ReqResp request to a peer. Throws on error. Logs each step of the request lifecycle.</p>
 <ol>
 <li>Dial peer, establish duplex stream</li>
@@ -510,7 +576,7 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 <li>The maximum number of requested chunks are read. Does not throw, returns read chunks only.</li>
 </ol>
 <p><strong>Type parameters:</strong></p>
-<p>▪ <strong>T</strong>: <em>phase0.ResponseBody | phase0.ResponseBody[]</em></p>
+<p>▪ <strong>T</strong>: <em><a href="../network_reqresp/#responsebody">ResponseBody</a> | <a href="../network_reqresp/#responsebody">ResponseBody</a>[]</em></p>
 <p><strong>Parameters:</strong></p>
 <p>▪ <strong>__namedParameters</strong>: <em>object</em></p>
 <table>
@@ -526,6 +592,10 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 <td>IBeaconConfig</td>
 </tr>
 <tr>
+<td><code>forkDigestContext</code></td>
+<td><a href="../util/#iforkdigestcontext">IForkDigestContext</a></td>
+</tr>
+<tr>
 <td><code>libp2p</code></td>
 <td>Libp2p‹›</td>
 </tr>
@@ -536,10 +606,11 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 </tbody>
 </table>
 <p>▪ <strong>peerId</strong>: <em>PeerId</em></p>
-<p>▪ <strong>method</strong>: <em><a href="../../enums/constants.method/">Method</a></em></p>
-<p>▪ <strong>encoding</strong>: <em><a href="../../enums/constants.reqrespencoding/">ReqRespEncoding</a></em></p>
-<p>▪ <strong>requestBody</strong>: <em>phase0.RequestBody</em></p>
-<p>▪<code>Optional</code> <strong>maxResponses</strong>: <em>undefined | number</em></p>
+<p>▪ <strong>method</strong>: <em><a href="../../enums/network_reqresp.method/">Method</a></em></p>
+<p>▪ <strong>encoding</strong>: <em><a href="../../enums/network_reqresp.encoding/">Encoding</a></em></p>
+<p>▪ <strong>versions</strong>: <em><a href="../../enums/network_reqresp.version/">Version</a>[]</em></p>
+<p>▪ <strong>requestBody</strong>: <em><a href="../network_reqresp/#requestbody">RequestBody</a></em></p>
+<p>▪ <strong>maxResponses</strong>: <em>number</em></p>
 <p>▪<code>Optional</code> <strong>signal</strong>: <em>AbortSignal</em></p>
 <p>▪<code>Optional</code> <strong>options</strong>: <em>Partial‹typeof timeoutOptions›</em></p>
 <p>▪<code>Default value</code> <strong>requestId</strong>: <em>number</em>= 0</p>
@@ -579,7 +650,7 @@ Note: <code>response</code> has zero or more chunks for SSZ-list responses or ex
 <div class="md-dialog" data-md-component="dialog">
 <div class="md-dialog__inner md-typeset"></div>
 </div>
-<script id="__config" type="application/json">{"base": "../../../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}, "search": "../../../../assets/javascripts/workers/search.fe42c31b.min.js", "version": null}</script>
-<script src="../../../../assets/javascripts/bundle.65ce87ac.min.js"></script>
+<script id="__config" type="application/json">{"base": "../../../..", "features": [], "translations": {"clipboard.copy": "Copy to clipboard", "clipboard.copied": "Copied to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.placeholder": "Type to start searching", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.term.missing": "Missing"}, "search": "../../../../assets/javascripts/workers/search.4fa0e4ee.min.js", "version": null}</script>
+<script src="../../../../assets/javascripts/bundle.1d3bfcf1.min.js"></script>
 </body>
 </html>
