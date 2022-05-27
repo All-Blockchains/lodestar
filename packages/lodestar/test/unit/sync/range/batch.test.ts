@@ -1,9 +1,10 @@
 import {expect} from "chai";
 import PeerId from "peer-id";
-import {config} from "@chainsafe/lodestar-config/minimal";
-import {generateEmptySignedBlock} from "../../../utils/block";
-import {expectThrowsLodestarError} from "../../../utils/errors";
-import {Batch, BatchOpts, BatchStatus, BatchErrorCode, BatchError} from "../../../../src/sync/range/batch";
+import {SLOTS_PER_EPOCH} from "@chainsafe/lodestar-params";
+import {config} from "@chainsafe/lodestar-config/default";
+import {generateEmptySignedBlock} from "../../../utils/block.js";
+import {expectThrowsLodestarError} from "../../../utils/errors.js";
+import {Batch, BatchOpts, BatchStatus, BatchErrorCode, BatchError} from "../../../../src/sync/range/batch.js";
 
 describe("sync / range / batch", () => {
   const opts: BatchOpts = {epochsPerBatch: 2};
@@ -17,7 +18,7 @@ describe("sync / range / batch", () => {
     const batch = new Batch(startEpoch, config, opts);
     expect(batch.request).to.deep.equal({
       startSlot: 1,
-      count: config.params.SLOTS_PER_EPOCH * opts.epochsPerBatch,
+      count: SLOTS_PER_EPOCH * opts.epochsPerBatch,
       step: 1,
     });
   });
@@ -49,7 +50,7 @@ describe("sync / range / batch", () => {
     expect(blocksToProcess).to.equal(blocksDownloaded, "Blocks to process should be the same downloaded");
 
     // processingError: Processing -> AwaitingDownload
-    batch.processingError();
+    batch.processingError(new Error());
     expect(batch.state.status).to.equal(BatchStatus.AwaitingDownload, "Wrong status on processingError");
 
     // retry download + processing: AwaitingDownload -> Downloading -> AwaitingProcessing -> Processing
@@ -61,7 +62,7 @@ describe("sync / range / batch", () => {
     expect(batch.state.status).to.equal(BatchStatus.AwaitingValidation, "Wrong status on processingSuccess");
 
     // validationError: AwaitingValidation -> AwaitingDownload
-    batch.validationError();
+    batch.validationError(new Error());
     expect(batch.state.status).to.equal(BatchStatus.AwaitingDownload, "Wrong status on validationError");
 
     // retry download + processing + validation: AwaitingDownload -> Downloading -> AwaitingProcessing -> Processing -> AwaitingValidation

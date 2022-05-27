@@ -1,32 +1,29 @@
 import PeerId from "peer-id";
 import pipe from "it-pipe";
-import {AbortSignal} from "abort-controller";
-import {Libp2p} from "libp2p/src/connection-manager";
+import {ILogger, TimeoutError, withTimeout} from "@chainsafe/lodestar-utils";
 import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {Context, ILogger, TimeoutError, withTimeout} from "@chainsafe/lodestar-utils";
-import {IForkDigestContext} from "../../../util/forkDigestContext";
-import {REQUEST_TIMEOUT, RespStatus} from "../../../constants";
-import {getAgentVersionFromPeerStore, prettyPrintPeerId} from "../../util";
-import {Method, Protocol, RequestBody, ResponseBody} from "../types";
-import {onChunk} from "../utils";
-import {Libp2pStream} from "../interface";
-import {requestDecode} from "../encoders/requestDecode";
-import {responseEncodeError, responseEncodeSuccess} from "../encoders/responseEncode";
-import {ResponseError} from "./errors";
+import {REQUEST_TIMEOUT, RespStatus} from "../../../constants/index.js";
+import {prettyPrintPeerId} from "../../util.js";
+import {PeersData} from "../../peers/peersData.js";
+import {Protocol, RequestBody, OutgoingResponseBody} from "../types.js";
+import {renderRequestBody} from "../utils/index.js";
+import {Libp2pStream} from "../interface.js";
+import {requestDecode} from "../encoders/requestDecode.js";
+import {responseEncodeError, responseEncodeSuccess} from "../encoders/responseEncode.js";
+import {ResponseError} from "./errors.js";
 
 export {ResponseError};
 
 export type PerformRequestHandler = (
-  method: Method,
+  protocol: Protocol,
   requestBody: RequestBody,
   peerId: PeerId
-) => AsyncIterable<ResponseBody>;
+) => AsyncIterable<OutgoingResponseBody>;
 
 type HandleRequestModules = {
   config: IBeaconConfig;
   logger: ILogger;
-  forkDigestContext: IForkDigestContext;
-  libp2p: Libp2p;
+  peersData: PeersData;
 };
 
 /**
@@ -40,7 +37,7 @@ type HandleRequestModules = {
  * 4b. On error, encode and write an error `<response_chunk>` and stop
  */
 export async function handleRequest(
-  {config, logger, forkDigestContext, libp2p}: HandleRequestModules,
+  {config, logger, peersData: peersData}: HandleRequestModules,
   performRequestHandler: PerformRequestHandler,
   stream: Libp2pStream,
   peerId: PeerId,
@@ -48,18 +45,18 @@ export async function handleRequest(
   signal?: AbortSignal,
   requestId = 0
 ): Promise<void> {
-  const agentVersion = getAgentVersionFromPeerStore(peerId, libp2p.peerStore.metadataBook);
-  const logCtx = {method: protocol.method, agentVersion, peer: prettyPrintPeerId(peerId), requestId};
+  const client = peersData.getPeerKind(peerId.toB58String());
+  const logCtx = {method: protocol.method, client, peer: prettyPrintPeerId(peerId), requestId};
 
   let responseError: Error | null = null;
   await pipe(
     // Yields success chunks and error chunks in the same generator
     // This syntax allows to recycle stream.sink to send success and error chunks without returning
     // in case request whose body is a List fails at chunk_i > 0, without breaking out of the for..await..of
-    (async function* () {
+    (async function* requestHandlerSource() {
       try {
         const requestBody = await withTimeout(
-          () => pipe(stream.source, requestDecode(config, protocol)),
+          () => pipe(stream.source, requestDecode(protocol)),
           REQUEST_TIMEOUT,
           signal
         ).catch((e: unknown) => {
@@ -70,13 +67,14 @@ export async function handleRequest(
           }
         });
 
-        logger.debug("Resp received request", {...logCtx, requestBody} as Context);
+        logger.debug("Resp received request", {...logCtx, body: renderRequestBody(protocol.method, requestBody)});
 
         yield* pipe(
-          performRequestHandler(protocol.method, requestBody, peerId),
+          performRequestHandler(protocol, requestBody, peerId),
           // NOTE: Do not log the resp chunk contents, logs get extremely cluttered
-          onChunk(() => logger.debug("Resp sending chunk", logCtx)),
-          responseEncodeSuccess(config, forkDigestContext, protocol)
+          // Note: Not logging on each chunk since after 1 year it hasn't add any value when debugging
+          // onChunk(() => logger.debug("Resp sending chunk", logCtx)),
+          responseEncodeSuccess(config, protocol)
         );
       } catch (e) {
         const status = e instanceof ResponseError ? e.status : RespStatus.SERVER_ERROR;
@@ -101,7 +99,7 @@ export async function handleRequest(
   // It has only happened when doing a request too fast upon immediate connection on inbound peer
   // investigate a potential race condition there
 
-  if (responseError) {
+  if (responseError !== null) {
     logger.verbose("Resp error", logCtx, responseError);
     throw responseError;
   } else {

@@ -5,12 +5,13 @@ import {computeEpochAtSlot, computeStartSlotAtEpoch} from "@chainsafe/lodestar-b
 import {IBeaconConfig} from "@chainsafe/lodestar-config";
 import {Epoch, Slot, phase0} from "@chainsafe/lodestar-types";
 import {ILogger} from "@chainsafe/lodestar-utils";
-import {IBeaconChain} from "../../chain";
-import {INetwork} from "../../network";
-import {IMetrics} from "../../metrics";
-import {RangeSyncType, getRangeSyncType} from "../utils";
-import {updateChains, shouldRemoveChain} from "./utils";
-import {ChainTarget, SyncChainFns, SyncChain, SyncChainOpts, SyncChainDebugState} from "./chain";
+import {IBeaconChain} from "../../chain/index.js";
+import {INetwork} from "../../network/index.js";
+import {IMetrics} from "../../metrics/index.js";
+import {RangeSyncType, getRangeSyncType, rangeSyncTypes} from "../utils/remoteSyncType.js";
+import {PartiallyVerifiedBlockFlags} from "../../chain/blocks/index.js";
+import {updateChains} from "./utils/index.js";
+import {ChainTarget, SyncChainFns, SyncChain, SyncChainOpts, SyncChainDebugState} from "./chain.js";
 
 export enum RangeSyncEvent {
   completedChain = "RangeSync-completedChain",
@@ -44,7 +45,9 @@ export type RangeSyncModules = {
   logger: ILogger;
 };
 
-export type RangeSyncOpts = SyncChainOpts;
+export type RangeSyncOpts = SyncChainOpts & {
+  disableProcessAsChainSegment?: boolean;
+};
 
 /**
  * RangeSync groups peers by their `status` into static target `SyncChain` instances
@@ -79,16 +82,21 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
   /** There is a single chain per type, 1 finalized sync, 1 head sync */
   private readonly chains = new Map<RangeSyncType, SyncChain>();
 
-  private opts?: SyncChainOpts;
+  private opts?: RangeSyncOpts;
 
-  constructor(modules: RangeSyncModules, opts?: SyncChainOpts) {
+  constructor(modules: RangeSyncModules, opts?: RangeSyncOpts) {
     super();
-    this.chain = modules.chain;
-    this.network = modules.network;
-    this.metrics = modules.metrics;
-    this.config = modules.config;
-    this.logger = modules.logger;
+    const {chain, network, metrics, config, logger} = modules;
+    this.chain = chain;
+    this.network = network;
+    this.metrics = metrics;
+    this.config = config;
+    this.logger = logger;
     this.opts = opts;
+
+    if (metrics) {
+      metrics.syncStatus.addCollect(() => this.scrapeMetrics(metrics));
+    }
   }
 
   /** Throw / return all AsyncGenerators inside every SyncChain instance */
@@ -113,7 +121,7 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
       case RangeSyncType.Finalized: {
         startEpoch = localStatus.finalizedEpoch;
         target = {
-          slot: computeStartSlotAtEpoch(this.config, peerStatus.finalizedEpoch),
+          slot: computeStartSlotAtEpoch(peerStatus.finalizedEpoch),
           root: peerStatus.finalizedRoot,
         };
         break;
@@ -122,7 +130,7 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
       case RangeSyncType.Head: {
         // The new peer has the same finalized (earlier filters should prevent a peer with an
         // earlier finalized chain from reaching here).
-        startEpoch = Math.min(computeEpochAtSlot(this.config, localStatus.headSlot), peerStatus.finalizedEpoch);
+        startEpoch = Math.min(computeEpochAtSlot(localStatus.headSlot), peerStatus.finalizedEpoch);
         target = {
           slot: peerStatus.headSlot,
           root: peerStatus.headRoot,
@@ -156,7 +164,7 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
   get state(): RangeSyncState {
     const syncingHeadTargets: ChainTarget[] = [];
     for (const chain of this.chains.values()) {
-      if (chain.isSyncing && chain.target) {
+      if (chain.isSyncing) {
         if (chain.syncType === RangeSyncType.Finalized) {
           return {status: RangeSyncStatus.Finalized, target: chain.target};
         } else {
@@ -180,8 +188,30 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
   }
 
   /** Convenience method for `SyncChain` */
-  private processChainSegment: SyncChainFns["processChainSegment"] = async (blocks) => {
-    await this.chain.processChainSegment(blocks, {prefinalized: true, trusted: false}); // Not trusted, verify signatures
+  private processChainSegment: SyncChainFns["processChainSegment"] = async (blocks, syncType) => {
+    // Not trusted, verify signatures
+    const flags: PartiallyVerifiedBlockFlags = {
+      // Only skip importing attestations for finalized sync. For head sync attestation are valuable.
+      // Importing attestations also triggers a head update, see https://github.com/ChainSafe/lodestar/issues/3804
+      // TODO: Review if this is okay, can we prevent some attacks by importing attestations?
+      skipImportingAttestations: syncType === RangeSyncType.Finalized,
+      // Ignores ALREADY_KNOWN or GENESIS_BLOCK errors, and continues with the next block in chain segment
+      ignoreIfKnown: true,
+      // Ignore WOULD_REVERT_FINALIZED_SLOT error, continue with the next block in chain segment
+      ignoreIfFinalized: true,
+      // We won't attest to this block so it's okay to ignore a SYNCING message from execution layer
+      fromRangeSync: true,
+      // when this runs, syncing is the most important thing and gossip is not likely to run
+      // so we can utilize worker threads to verify signatures
+      blsVerifyOnMainThread: false,
+    };
+
+    if (this.opts?.disableProcessAsChainSegment) {
+      // Should only be used for debugging or testing
+      for (const block of blocks) await this.chain.processBlock(block, flags);
+    } else {
+      await this.chain.processChainSegment(blocks, flags);
+    }
   };
 
   /** Convenience method for `SyncChain` */
@@ -191,14 +221,17 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
 
   /** Convenience method for `SyncChain` */
   private reportPeer: SyncChainFns["reportPeer"] = (peer, action, actionName) => {
-    this.network.peerRpcScores.applyAction(peer, action, actionName);
+    this.network.reportPeer(peer, action, actionName);
   };
 
   /** Convenience method for `SyncChain` */
-  private onSyncChainEnd: SyncChainFns["onEnd"] = () => {
-    const localStatus = this.chain.getStatus();
-    this.update(localStatus.finalizedEpoch);
+  private onSyncChainEnd: SyncChainFns["onEnd"] = (err, target) => {
+    this.update(this.chain.forkChoice.getFinalizedCheckpoint().epoch);
     this.emit(RangeSyncEvent.completedChain);
+
+    if (err === null && target !== null) {
+      this.metrics?.syncRange.syncChainHighestTargetSlotCompleted.set(target.slot);
+    }
   };
 
   private addPeerOrCreateChain(startEpoch: Epoch, target: ChainTarget, peer: PeerId, syncType: RangeSyncType): void {
@@ -206,6 +239,7 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
     if (!syncChain) {
       syncChain = new SyncChain(
         startEpoch,
+        target,
         syncType,
         {
           processChainSegment: this.processChainSegment,
@@ -217,21 +251,32 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
         this.opts
       );
       this.chains.set(syncType, syncChain);
-      this.logger.verbose("New syncChain", {syncType});
+      this.logger.verbose("Added syncChain", {syncType});
+      this.metrics?.syncRange.syncChainsEvents.inc({syncType: syncChain.syncType, event: "add"});
     }
 
     syncChain.addPeer(peer, target);
   }
 
   private update(localFinalizedEpoch: Epoch): void {
-    const localFinalizedSlot = computeStartSlotAtEpoch(this.config, localFinalizedEpoch);
+    const localFinalizedSlot = computeStartSlotAtEpoch(localFinalizedEpoch);
 
     // Remove chains that are out-dated, peer-empty, completed or failed
     for (const [id, syncChain] of this.chains.entries()) {
-      if (shouldRemoveChain(syncChain, localFinalizedSlot, this.chain)) {
+      // Checks if a Finalized or Head chain should be removed
+      if (
+        // Sync chain has completed syncing or encountered an error
+        syncChain.isRemovable ||
+        // Sync chain has no more peers to download from
+        syncChain.peers === 0 ||
+        // Outdated: our chain has progressed beyond this sync chain
+        syncChain.target.slot < localFinalizedSlot ||
+        this.chain.forkChoice.hasBlock(syncChain.target.root)
+      ) {
         syncChain.remove();
         this.chains.delete(id);
         this.logger.debug("Removed syncChain", {id: syncChain.logId});
+        this.metrics?.syncRange.syncChainsEvents.inc({syncType: syncChain.syncType, event: "remove"});
 
         // Re-status peers from successful chain. Potentially trigger a Head sync
         this.network.reStatusPeers(syncChain.getPeers());
@@ -242,11 +287,38 @@ export class RangeSync extends (EventEmitter as {new (): RangeSyncEmitter}) {
 
     for (const syncChain of toStop) {
       syncChain.stopSyncing();
+      if (syncChain.isSyncing) {
+        this.metrics?.syncRange.syncChainsEvents.inc({syncType: syncChain.syncType, event: "stop"});
+      }
     }
 
     for (const syncChain of toStart) {
       syncChain.startSyncing(localFinalizedEpoch);
-      if (!syncChain.isSyncing) this.metrics?.syncChainsStarted.inc({syncType: syncChain.syncType});
+      if (!syncChain.isSyncing) {
+        this.metrics?.syncRange.syncChainsEvents.inc({syncType: syncChain.syncType, event: "start"});
+      }
+    }
+  }
+
+  private scrapeMetrics(metrics: IMetrics): void {
+    const syncChainsByType: Record<RangeSyncType, number> = {
+      [RangeSyncType.Finalized]: 0,
+      [RangeSyncType.Head]: 0,
+    };
+
+    const peersByTypeArr: Record<RangeSyncType, number[]> = {
+      [RangeSyncType.Finalized]: [],
+      [RangeSyncType.Head]: [],
+    };
+
+    for (const chain of this.chains.values()) {
+      peersByTypeArr[chain.syncType].push(chain.peers);
+      syncChainsByType[chain.syncType]++;
+    }
+
+    for (const syncType of rangeSyncTypes) {
+      metrics.syncRange.syncChains.set({syncType}, syncChainsByType[syncType]);
+      metrics.syncRange.syncChainsPeers.set({syncType}, peersByTypeArr[syncType]);
     }
   }
 }

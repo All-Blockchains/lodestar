@@ -1,16 +1,19 @@
-import {AbortSignal} from "abort-controller";
-import {ErrorAborted, ILogger, sleep} from "@chainsafe/lodestar-utils";
-import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {Epoch, Slot} from "@chainsafe/lodestar-types";
+import {ErrorAborted, ILogger, isErrorAborted, sleep} from "@chainsafe/lodestar-utils";
+import {GENESIS_SLOT, SLOTS_PER_EPOCH} from "@chainsafe/lodestar-params";
+import {IChainForkConfig} from "@chainsafe/lodestar-config";
+import {Epoch, Slot, TimeSeconds} from "@chainsafe/lodestar-types";
 import {computeEpochAtSlot, getCurrentSlot} from "@chainsafe/lodestar-beacon-state-transition";
 
 type RunEveryFn = (slot: Slot, signal: AbortSignal) => Promise<void>;
 
 export interface IClock {
+  readonly genesisTime: number;
+  readonly secondsPerSlot: number;
   start(signal: AbortSignal): void;
   runEverySlot(fn: (slot: Slot, signal: AbortSignal) => Promise<void>): void;
   runEveryEpoch(fn: (epoch: Epoch, signal: AbortSignal) => Promise<void>): void;
-  msToSlotFraction(slot: Slot, fraction: number): number;
+  msToSlot(slot: Slot): number;
+  secFromSlot(slot: Slot): number;
 }
 
 export enum TimeItem {
@@ -20,20 +23,24 @@ export enum TimeItem {
 
 export class Clock implements IClock {
   readonly genesisTime: number;
-  private readonly config: IBeaconConfig;
+  readonly secondsPerSlot: number;
+  private readonly config: IChainForkConfig;
   private readonly logger: ILogger;
   private readonly fns: {timeItem: TimeItem; fn: RunEveryFn}[] = [];
 
-  constructor(config: IBeaconConfig, logger: ILogger, opts: {genesisTime: number}) {
+  constructor(config: IChainForkConfig, logger: ILogger, opts: {genesisTime: number}) {
     this.genesisTime = opts.genesisTime;
+    this.secondsPerSlot = config.SECONDS_PER_SLOT;
     this.config = config;
     this.logger = logger;
   }
 
   start(signal: AbortSignal): void {
     for (const {timeItem, fn} of this.fns) {
-      this.runAtMostEvery(timeItem, signal, fn).catch((e) => {
-        this.logger.error("", {}, e);
+      this.runAtMostEvery(timeItem, signal, fn).catch((e: Error) => {
+        if (!isErrorAborted(e)) {
+          this.logger.error("runAtMostEvery", {}, e);
+        }
       });
     }
   }
@@ -46,10 +53,15 @@ export class Clock implements IClock {
     this.fns.push({timeItem: TimeItem.Epoch, fn});
   }
 
-  /** Miliseconds from now to a specific slot fraction */
-  msToSlotFraction(slot: Slot, fraction: number): number {
-    const timeAt = this.genesisTime + this.config.params.SECONDS_PER_SLOT * (slot + fraction);
-    return timeAt - Date.now();
+  /** Miliseconds from now to a specific slot */
+  msToSlot(slot: Slot): number {
+    const timeAt = this.genesisTime + this.config.SECONDS_PER_SLOT * slot;
+    return timeAt * 1000 - Date.now();
+  }
+
+  /** Seconds elapsed from a specific slot to now */
+  secFromSlot(slot: Slot): number {
+    return Date.now() / 1000 - (this.genesisTime + this.config.SECONDS_PER_SLOT * slot);
   }
 
   /**
@@ -59,15 +71,21 @@ export class Clock implements IClock {
    * on an overloaded/latent system rather than overload it even more.
    */
   private async runAtMostEvery(timeItem: TimeItem, signal: AbortSignal, fn: RunEveryFn): Promise<void> {
+    // Run immediatelly first
+    let slot = getCurrentSlot(this.config, this.genesisTime);
+    let slotOrEpoch = timeItem === TimeItem.Slot ? slot : computeEpochAtSlot(slot);
     while (!signal.aborted) {
-      // Run immediatelly first
-      const slot = getCurrentSlot(this.config, this.genesisTime);
-
-      const slotOrEpoch = timeItem === TimeItem.Slot ? slot : computeEpochAtSlot(this.config, slot);
-      await fn(slotOrEpoch, signal);
+      // Must catch fn() to ensure `sleep()` is awaited both for resolve and reject
+      await fn(slotOrEpoch, signal).catch((e: Error) => {
+        if (!isErrorAborted(e)) this.logger.error("Error on runEvery fn", {}, e);
+      });
 
       try {
         await sleep(this.timeUntilNext(timeItem), signal);
+        // calling getCurrentSlot here may not be correct when we're close to the next slot
+        // it's safe to call getCurrentSlotAround after we sleep
+        slot = getCurrentSlotAround(this.config, this.genesisTime);
+        slotOrEpoch = timeItem === TimeItem.Slot ? slot : computeEpochAtSlot(slot);
       } catch (e) {
         if (e instanceof ErrorAborted) {
           return;
@@ -78,21 +96,38 @@ export class Clock implements IClock {
   }
 
   private timeUntilNext(timeItem: TimeItem): number {
-    const miliSecondsPerSlot = this.config.params.SECONDS_PER_SLOT * 1000;
+    const miliSecondsPerSlot = this.config.SECONDS_PER_SLOT * 1000;
     const msFromGenesis = Date.now() - this.genesisTime * 1000;
 
     if (timeItem === TimeItem.Slot) {
-      return miliSecondsPerSlot - Math.abs(msFromGenesis % miliSecondsPerSlot);
+      if (msFromGenesis >= 0) {
+        return miliSecondsPerSlot - (msFromGenesis % miliSecondsPerSlot);
+      } else {
+        return Math.abs(msFromGenesis % miliSecondsPerSlot);
+      }
     } else {
-      const miliSecondsPerEpoch = this.config.params.SLOTS_PER_EPOCH * miliSecondsPerSlot;
-      return miliSecondsPerEpoch - Math.abs(msFromGenesis % miliSecondsPerEpoch);
+      const miliSecondsPerEpoch = SLOTS_PER_EPOCH * miliSecondsPerSlot;
+      if (msFromGenesis >= 0) {
+        return miliSecondsPerEpoch - (msFromGenesis % miliSecondsPerEpoch);
+      } else {
+        return Math.abs(msFromGenesis % miliSecondsPerEpoch);
+      }
     }
   }
 }
 
+/**
+ * Same to the spec but we use Math.round instead of Math.floor.
+ */
+export function getCurrentSlotAround(config: IChainForkConfig, genesisTime: TimeSeconds): Slot {
+  const diffInSeconds = Date.now() / 1000 - genesisTime;
+  const slotsSinceGenesis = Math.round(diffInSeconds / config.SECONDS_PER_SLOT);
+  return GENESIS_SLOT + slotsSinceGenesis;
+}
+
 // function useEventStream() {
 //   this.stream = this.events.getEventStream([BeaconEventType.BLOCK, BeaconEventType.HEAD, BeaconEventType.CHAIN_REORG]);
-//   pipeToEmitter(this.stream, this).catch((e) => {
+//   pipeToEmitter(this.stream, this).catch((e: Error) => {
 //     this.logger.error("Error on stream pipe", {}, e);
 //   });
 

@@ -1,19 +1,18 @@
-import {AbortSignal} from "abort-controller";
 import {Epoch, Slot} from "@chainsafe/lodestar-types";
-import {IBeaconConfig} from "@chainsafe/lodestar-config";
+import {IChainForkConfig} from "@chainsafe/lodestar-config";
 import {ErrorAborted} from "@chainsafe/lodestar-utils";
 import {computeEpochAtSlot, computeTimeAtSlot, getCurrentSlot} from "@chainsafe/lodestar-beacon-state-transition";
 
-import {ChainEvent, ChainEventEmitter} from "../emitter";
+import {ChainEvent, ChainEventEmitter} from "../emitter.js";
 
-import {IBeaconClock} from "./interface";
-import {MAXIMUM_GOSSIP_CLOCK_DISPARITY} from "../../constants";
+import {MAXIMUM_GOSSIP_CLOCK_DISPARITY} from "../../constants/index.js";
+import {IBeaconClock} from "./interface.js";
 
 /**
  * A local clock, the clock time is assumed to be trusted
  */
 export class LocalClock implements IBeaconClock {
-  private readonly config: IBeaconConfig;
+  private readonly config: IChainForkConfig;
   private readonly genesisTime: number;
   private timeoutId: number;
   private readonly emitter: ChainEventEmitter;
@@ -26,7 +25,7 @@ export class LocalClock implements IBeaconClock {
     emitter,
     signal,
   }: {
-    config: IBeaconConfig;
+    config: IChainForkConfig;
     genesisTime: number;
     emitter: ChainEventEmitter;
     signal: AbortSignal;
@@ -60,7 +59,40 @@ export class LocalClock implements IBeaconClock {
   }
 
   get currentEpoch(): Epoch {
-    return computeEpochAtSlot(this.config, this.currentSlot);
+    return computeEpochAtSlot(this.currentSlot);
+  }
+
+  /** Returns the slot if the internal clock were advanced by `toleranceSec`. */
+  slotWithFutureTolerance(toleranceSec: number): Slot {
+    // this is the same to getting slot at now + toleranceSec
+    return getCurrentSlot(this.config, this.genesisTime - toleranceSec);
+  }
+
+  /** Returns the slot if the internal clock were reversed by `toleranceSec`. */
+  slotWithPastTolerance(toleranceSec: number): Slot {
+    // this is the same to getting slot at now - toleranceSec
+    return getCurrentSlot(this.config, this.genesisTime + toleranceSec);
+  }
+
+  /**
+   * Check if a slot is current slot given MAXIMUM_GOSSIP_CLOCK_DISPARITY.
+   */
+  isCurrentSlotGivenGossipDisparity(slot: Slot): boolean {
+    const currentSlot = this.currentSlot;
+    if (currentSlot === slot) {
+      return true;
+    }
+    const nextSlotTime = computeTimeAtSlot(this.config, currentSlot + 1, this.genesisTime) * 1000;
+    // we're too close to next slot, accept next slot
+    if (nextSlotTime - Date.now() < MAXIMUM_GOSSIP_CLOCK_DISPARITY) {
+      return slot === currentSlot + 1;
+    }
+    const currentSlotTime = computeTimeAtSlot(this.config, currentSlot, this.genesisTime) * 1000;
+    // we've just passed the current slot, accept previous slot
+    if (Date.now() - currentSlotTime < MAXIMUM_GOSSIP_CLOCK_DISPARITY) {
+      return slot === currentSlot - 1;
+    }
+    return false;
   }
 
   async waitForSlot(slot: Slot): Promise<void> {
@@ -95,6 +127,10 @@ export class LocalClock implements IBeaconClock {
     });
   }
 
+  secFromSlot(slot: Slot, toSec = Date.now() / 1000): number {
+    return toSec - (this.genesisTime + slot * this.config.SECONDS_PER_SLOT);
+  }
+
   private onNextSlot = (slot?: Slot): void => {
     const clockSlot = slot ?? getCurrentSlot(this.config, this.genesisTime);
     // process multiple clock slots in the case the main thread has been saturated for > SECONDS_PER_SLOT
@@ -104,8 +140,8 @@ export class LocalClock implements IBeaconClock {
 
       this.emitter.emit(ChainEvent.clockSlot, this._currentSlot);
 
-      const previousEpoch = computeEpochAtSlot(this.config, previousSlot);
-      const currentEpoch = computeEpochAtSlot(this.config, this._currentSlot);
+      const previousEpoch = computeEpochAtSlot(previousSlot);
+      const currentEpoch = computeEpochAtSlot(this._currentSlot);
 
       if (previousEpoch < currentEpoch) {
         this.emitter.emit(ChainEvent.clockEpoch, currentEpoch);
@@ -116,7 +152,7 @@ export class LocalClock implements IBeaconClock {
   };
 
   private msUntilNextSlot(): number {
-    const miliSecondsPerSlot = this.config.params.SECONDS_PER_SLOT * 1000;
+    const miliSecondsPerSlot = this.config.SECONDS_PER_SLOT * 1000;
     const diffInMiliSeconds = Date.now() - this.genesisTime * 1000;
     return miliSecondsPerSlot - (diffInMiliSeconds % miliSecondsPerSlot);
   }

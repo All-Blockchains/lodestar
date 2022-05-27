@@ -1,8 +1,7 @@
-export * from "./signatureSets";
-export * from "./stateTransition";
-export * from "./util";
-export * from "./block";
-export * from "./epoch";
+export * from "./signatureSets/index.js";
+export * from "./stateTransition.js";
+export * from "./block/index.js";
+export * from "./epoch/index.js";
 
 // re-export allForks lodestar types for ergonomic usage downstream
 // eg:
@@ -12,4 +11,4 @@ export * from "./epoch";
 // allForks.processDeposit(...)
 //
 // const x: allForks.BeaconState;
-export * from "@chainsafe/lodestar-types/lib/allForks";
+export * from "@chainsafe/lodestar-types/allForks";

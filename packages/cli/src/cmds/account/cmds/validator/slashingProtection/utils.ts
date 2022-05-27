@@ -1,12 +1,13 @@
 import {Root} from "@chainsafe/lodestar-types";
-import {ApiClientOverRest, SlashingProtection} from "@chainsafe/lodestar-validator";
+import {getClient} from "@chainsafe/lodestar-api";
+import {SlashingProtection} from "@chainsafe/lodestar-validator";
 import {LevelDbController} from "@chainsafe/lodestar-db";
-import {YargsError} from "../../../../../util";
-import {IGlobalArgs} from "../../../../../options";
-import {getValidatorPaths} from "../../../../validator/paths";
-import {getBeaconConfigFromArgs} from "../../../../../config";
-import {ISlashingProtectionArgs} from "./options";
-import {errorLogger} from "../../../../../util/logger";
+import {YargsError} from "../../../../../util/index.js";
+import {IGlobalArgs} from "../../../../../options/index.js";
+import {getValidatorPaths} from "../../../../validator/paths.js";
+import {getBeaconConfigFromArgs} from "../../../../../config/index.js";
+import {errorLogger} from "../../../../../util/logger.js";
+import {ISlashingProtectionArgs} from "./options.js";
 
 /**
  * Returns a new SlashingProtection object instance based on global args.
@@ -29,11 +30,11 @@ export async function getGenesisValidatorsRoot(args: IGlobalArgs & ISlashingProt
   const server = args.server;
 
   const config = getBeaconConfigFromArgs(args);
-  const api = ApiClientOverRest(config, server);
+  const api = getClient({baseUrl: server}, {config});
   const genesis = await api.beacon.getGenesis();
 
-  if (genesis) {
-    return genesis.genesisValidatorsRoot;
+  if (genesis !== undefined) {
+    return genesis.data.genesisValidatorsRoot;
   } else {
     if (args.force) {
       return Buffer.alloc(32, 0);

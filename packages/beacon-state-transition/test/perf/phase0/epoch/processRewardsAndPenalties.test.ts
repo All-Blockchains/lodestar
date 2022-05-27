@@ -1,38 +1,56 @@
-import {generatePerfTestCachedBeaconState, initBLS} from "../../util";
-import {expect} from "chai";
-import {phase0, allForks} from "../../../../src";
-import {profilerLogger} from "../../../utils/logger";
+import {itBench} from "@dapplion/benchmark";
+import {phase0} from "../../../../src/index.js";
+import {generatePerfTestCachedStatePhase0, numValidators} from "../../util.js";
+import {StatePhase0Epoch} from "../../types.js";
+import {FlagFactors, generateBalanceDeltasEpochProcess} from "./util.js";
 
-describe("processRewardsAndPenalties", function () {
-  let state: allForks.CachedBeaconState<phase0.BeaconState>;
-  let epochProcess: allForks.IEpochProcess;
-  const logger = profilerLogger();
+// - On normal mainnet conditions
+//   - prevSourceAttester: 98%
+//   - prevTargetAttester: 96%
+//   - prevHeadAttester:   93%
+//   - currSourceAttester: 95%
+//   - currTargetAttester: 93%
+//   - currHeadAttester:   91%
+//   - unslashed:          100%
+//   - eligibleAttester:   98%
 
-  before(async function () {
-    this.timeout(0);
-    await initBLS();
-    state = generatePerfTestCachedBeaconState({goBackOneSlot: true});
-  });
+describe("phase0 getAttestationDeltas", () => {
+  const vc = numValidators;
+  const testCases: {id: string; isInInactivityLeak: boolean; flagFactors: FlagFactors}[] = [
+    {
+      id: "normalcase",
+      isInInactivityLeak: false,
+      flagFactors: {
+        prevSourceAttester: 0.98,
+        prevTargetAttester: 0.96,
+        prevHeadAttester: 0.93,
+        currSourceAttester: 0.95,
+        currTargetAttester: 0.93,
+        currHeadAttester: 0.91,
+        unslashed: 1,
+        eligibleAttester: 0.98,
+      },
+    },
+    {
+      id: "worstcase",
+      isInInactivityLeak: true,
+      flagFactors: 0xff,
+    },
+  ];
 
-  it("should processRewardsAndPenalties", function () {
-    this.timeout(0);
-    epochProcess = allForks.prepareEpochProcessState(state);
-    let minTime = Number.MAX_SAFE_INTEGER;
-    let maxTime = 0;
-    const MAX_TRY = 1000;
-    const from = process.hrtime.bigint();
-    for (let i = 0; i < MAX_TRY; i++) {
-      const start = Date.now();
-      phase0.processRewardsAndPenalties(state, epochProcess);
-      const duration = Date.now() - start;
-      if (duration < minTime) minTime = duration;
-      if (duration > maxTime) maxTime = duration;
-    }
-    const to = process.hrtime.bigint();
-    const average = Number((to - from) / BigInt(MAX_TRY) / BigInt(1000000));
-    logger.info("processRewardsAndPenalties in ms", {minTime, maxTime, average, maxTry: MAX_TRY});
-    expect(minTime).to.be.lte(174, "Minimal processRewardsAndPenalties is not less than 174ms");
-    expect(maxTime).to.be.lte(1300, "Maximal processRewardsAndPenalties is not less than 1300ms");
-    expect(average).to.be.lte(235, "Average processRewardsAndPenalties is not less than 235ms");
-  });
+  for (const {id, isInInactivityLeak, flagFactors} of testCases) {
+    itBench<StatePhase0Epoch, StatePhase0Epoch>({
+      id: `phase0 getAttestationDeltas - ${vc} ${id}`,
+      yieldEventLoopAfterEach: true, // So SubTree(s)'s WeakRef can be garbage collected https://github.com/nodejs/node/issues/39902
+      before: () => {
+        const state = generatePerfTestCachedStatePhase0({goBackOneSlot: true});
+        const epochProcess = generateBalanceDeltasEpochProcess(state, isInInactivityLeak, flagFactors);
+        return {state, epochProcess};
+      },
+      beforeEach: ({state, epochProcess}) => ({state: state.clone(), epochProcess}),
+      fn: ({state, epochProcess}) => {
+        phase0.getAttestationDeltas(state, epochProcess);
+      },
+    });
+  }
 });

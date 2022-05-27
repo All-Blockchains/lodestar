@@ -1,26 +1,33 @@
-import sinon from "sinon";
 import chai, {expect} from "chai";
 import chaiAsPromised from "chai-as-promised";
-import {AbortController} from "abort-controller";
 import PeerId from "peer-id";
-import {config} from "@chainsafe/lodestar-config/minimal";
+import {AbortController} from "@chainsafe/abort-controller";
+import {createIBeaconConfig} from "@chainsafe/lodestar-config";
+import {config} from "@chainsafe/lodestar-config/default";
 import {sleep as _sleep} from "@chainsafe/lodestar-utils";
-import {phase0} from "@chainsafe/lodestar-types";
-import {createPeerId, IReqRespOptions, Network, prettyPrintPeerId} from "../../../src/network";
-import {INetworkOptions} from "../../../src/network/options";
-import {Method, Encoding} from "../../../src/network/reqresp/types";
-import {IReqRespHandler} from "../../../src/network/reqresp/handlers";
-import {RequestError, RequestErrorCode} from "../../../src/network/reqresp/request";
-import {IRequestErrorMetadata} from "../../../src/network/reqresp/request/errors";
-import {testLogger} from "../../utils/logger";
-import {MockBeaconChain} from "../../utils/mocks/chain/chain";
-import {createNode} from "../../utils/network";
-import {generateState} from "../../utils/state";
-import {arrToSource, generateEmptySignedBlocks} from "../../unit/network/reqresp/utils";
-import {generateEmptySignedBlock} from "../../utils/block";
-import {expectRejectedWithLodestarError} from "../../utils/errors";
-import {connect, onPeerConnect} from "../../utils/network";
-import {StubbedBeaconDb} from "../../utils/stub";
+import {altair, phase0, ssz} from "@chainsafe/lodestar-types";
+import {ForkName} from "@chainsafe/lodestar-params";
+import {BitArray} from "@chainsafe/ssz";
+import {createPeerId, IReqRespOptions, Network, prettyPrintPeerId} from "../../../src/network/index.js";
+import {defaultNetworkOptions, INetworkOptions} from "../../../src/network/options.js";
+import {Method, Encoding} from "../../../src/network/reqresp/types.js";
+import {ReqRespHandlers} from "../../../src/network/reqresp/handlers/index.js";
+import {RequestError, RequestErrorCode} from "../../../src/network/reqresp/request/index.js";
+import {IRequestErrorMetadata} from "../../../src/network/reqresp/request/errors.js";
+import {testLogger} from "../../utils/logger.js";
+import {MockBeaconChain} from "../../utils/mocks/chain/chain.js";
+import {createNode} from "../../utils/network.js";
+import {generateState} from "../../utils/state.js";
+import {arrToSource, generateEmptySignedBlocks} from "../../unit/network/reqresp/utils.js";
+import {
+  blocksToReqRespBlockResponses,
+  generateEmptyReqRespBlockResponse,
+  generateEmptySignedBlock,
+} from "../../utils/block.js";
+import {expectRejectedWithLodestarError} from "../../utils/errors.js";
+import {connect, onPeerConnect} from "../../utils/network.js";
+import {StubbedBeaconDb} from "../../utils/stub/index.js";
+import {GossipHandlers} from "../../../src/network/gossip/index.js";
 
 chai.use(chaiAsPromised);
 
@@ -28,20 +35,22 @@ chai.use(chaiAsPromised);
 
 describe("network / ReqResp", function () {
   if (this.timeout() < 5000) this.timeout(5000);
+  this.retries(2); // This test fail sometimes, with a 5% rate.
 
   const multiaddr = "/ip4/127.0.0.1/tcp/0";
   const networkOptsDefault: INetworkOptions = {
+    ...defaultNetworkOptions,
     maxPeers: 1,
     targetPeers: 1,
     bootMultiaddrs: [],
-    rpcTimeout: 5000,
-    connectTimeout: 5000,
-    disconnectTimeout: 5000,
     localMultiaddrs: [],
+    discv5FirstQueryDelayMs: 0,
+    discv5: null,
   };
   const state = generateState();
-  const chain = new MockBeaconChain({genesisTime: 0, chainId: 0, networkId: BigInt(0), state, config});
-  const db = new StubbedBeaconDb(sinon);
+  const beaconConfig = createIBeaconConfig(config, state.genesisValidatorsRoot);
+  const chain = new MockBeaconChain({genesisTime: 0, chainId: 0, networkId: BigInt(0), state, config: beaconConfig});
+  const db = new StubbedBeaconDb();
 
   const afterEachCallbacks: (() => Promise<void> | void)[] = [];
   afterEach(async () => {
@@ -59,7 +68,7 @@ describe("network / ReqResp", function () {
   }
 
   async function createAndConnectPeers(
-    reqRespHandlerPartial?: Partial<IReqRespHandler>,
+    reqRespHandlersPartial?: Partial<ReqRespHandlers>,
     reqRespOpts?: IReqRespOptions
   ): Promise<[Network, Network]> {
     const controller = new AbortController();
@@ -70,14 +79,25 @@ describe("network / ReqResp", function () {
     const notImplemented = async function* <T>(): AsyncIterable<T> {
       throw Error("not implemented");
     };
-    const reqRespHandler: IReqRespHandler = {
+
+    const reqRespHandlers: ReqRespHandlers = {
       onStatus: notImplemented,
       onBeaconBlocksByRange: notImplemented,
       onBeaconBlocksByRoot: notImplemented,
-      ...reqRespHandlerPartial,
+      ...reqRespHandlersPartial,
     };
+
+    const gossipHandlers = {} as GossipHandlers;
     const opts = {...networkOptsDefault, ...reqRespOpts};
-    const modules = {config, db, chain, reqRespHandler, signal: controller.signal, metrics: null};
+    const modules = {
+      config: beaconConfig,
+      db,
+      chain,
+      reqRespHandlers,
+      gossipHandlers,
+      signal: controller.signal,
+      metrics: null,
+    };
     const netA = new Network(opts, {...modules, libp2p: libp2pA, logger: testLogger("A")});
     const netB = new Network(opts, {...modules, libp2p: libp2pB, logger: testLogger("B")});
     await Promise.all([netA.start(), netB.start()]);
@@ -99,8 +119,8 @@ describe("network / ReqResp", function () {
     const [netA, netB] = await createAndConnectPeers();
 
     // Modify the metadata to make the seqNumber non-zero
-    netB.metadata.attnets = [];
-    netB.metadata.attnets = [];
+    netB.metadata.attnets = BitArray.fromBitLen(0);
+    netB.metadata.attnets = BitArray.fromBitLen(0);
     const expectedPong = netB.metadata.seqNumber;
     expect(expectedPong.toString()).to.deep.equal("2", "seqNumber");
 
@@ -108,16 +128,29 @@ describe("network / ReqResp", function () {
     expect(pong.toString()).to.deep.equal(expectedPong.toString(), "Wrong response body");
   });
 
-  it("should send/receive a metadata message", async function () {
+  it("should send/receive a metadata message - phase0", async function () {
     const [netA, netB] = await createAndConnectPeers();
 
-    const metadataBody = {
+    const metadata: phase0.Metadata = {
       seqNumber: netB.metadata.seqNumber,
       attnets: netB.metadata.attnets,
     };
 
-    const metadata = await netA.reqResp.metadata(netB.peerId);
-    expect(metadata).to.deep.equal(metadataBody, "Wrong response body");
+    const receivedMetadata = await netA.reqResp.metadata(netB.peerId, ForkName.phase0);
+    expect(receivedMetadata).to.deep.equal(metadata, "Wrong response body");
+  });
+
+  it("should send/receive a metadata message - altair", async function () {
+    const [netA, netB] = await createAndConnectPeers();
+
+    const metadata: altair.Metadata = {
+      seqNumber: netB.metadata.seqNumber,
+      attnets: netB.metadata.attnets,
+      syncnets: netB.metadata.syncnets,
+    };
+
+    const receivedMetadata = await netA.reqResp.metadata(netB.peerId);
+    expect(receivedMetadata).to.deep.equal(metadata, "Wrong response body");
   });
 
   it("should send/receive a status message", async function () {
@@ -152,20 +185,17 @@ describe("network / ReqResp", function () {
 
     const [netA, netB] = await createAndConnectPeers({
       onBeaconBlocksByRange: async function* () {
-        yield* arrToSource(blocks);
+        yield* arrToSource(blocksToReqRespBlockResponses(blocks));
       },
     });
 
     const returnedBlocks = await netA.reqResp.beaconBlocksByRange(netB.peerId, req);
 
-    if (!returnedBlocks) throw Error("Returned null");
+    if (returnedBlocks === null) throw Error("Returned null");
     expect(returnedBlocks).to.have.length(req.count, "Wrong returnedBlocks lenght");
 
     for (const [i, returnedBlock] of returnedBlocks.entries()) {
-      expect(config.types.phase0.SignedBeaconBlock.equals(returnedBlock, blocks[i])).to.equal(
-        true,
-        `Wrong returnedBlock[${i}]`
-      );
+      expect(ssz.phase0.SignedBeaconBlock.equals(returnedBlock, blocks[i])).to.equal(true, `Wrong returnedBlock[${i}]`);
     }
   });
 
@@ -191,7 +221,7 @@ describe("network / ReqResp", function () {
 
     const [netA, netB] = await createAndConnectPeers({
       onBeaconBlocksByRange: async function* onRequest() {
-        yield* arrToSource(generateEmptySignedBlocks(2));
+        yield* arrToSource(blocksToReqRespBlockResponses(generateEmptySignedBlocks(2)));
         throw Error(testErrorMessage);
       },
     });
@@ -213,7 +243,7 @@ describe("network / ReqResp", function () {
         onBeaconBlocksByRange: async function* onRequest() {
           // Wait for too long before sending first response chunk
           await sleep(TTFB_TIMEOUT * 10);
-          yield generateEmptySignedBlock();
+          yield generateEmptyReqRespBlockResponse();
         },
       },
       {TTFB_TIMEOUT}
@@ -234,10 +264,10 @@ describe("network / ReqResp", function () {
     const [netA, netB] = await createAndConnectPeers(
       {
         onBeaconBlocksByRange: async function* onRequest() {
-          yield generateEmptySignedBlock();
+          yield generateEmptyReqRespBlockResponse();
           // Wait for too long before sending second response chunk
           await sleep(RESP_TIMEOUT * 5);
-          yield generateEmptySignedBlock();
+          yield generateEmptyReqRespBlockResponse();
         },
       },
       {RESP_TIMEOUT}
@@ -275,7 +305,7 @@ describe("network / ReqResp", function () {
     const [netA, netB] = await createAndConnectPeers(
       {
         onBeaconBlocksByRange: async function* onRequest() {
-          yield generateEmptySignedBlock();
+          yield generateEmptyReqRespBlockResponse();
           await sleep(100000000);
         },
       },

@@ -1,18 +1,20 @@
 import {ILogger} from "@chainsafe/lodestar-utils";
-import {Slot, phase0} from "@chainsafe/lodestar-types";
+import {allForks, RootHex, Slot, phase0} from "@chainsafe/lodestar-types";
 import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {INetwork} from "../network";
-import {BeaconGossipHandler} from "./gossip";
-import {IBeaconChain} from "../chain";
-import {IMetrics} from "../metrics";
-import {IBeaconDb} from "../db";
-import {SyncChainDebugState} from "./range/chain";
+import {routes} from "@chainsafe/lodestar-api";
+import {INetwork} from "../network/index.js";
+import {IBeaconChain} from "../chain/index.js";
+import {IMetrics} from "../metrics/index.js";
+import {IBeaconDb} from "../db/index.js";
+import {SyncChainDebugState} from "./range/chain.js";
 export {SyncChainDebugState};
+
+export type SyncingStatus = routes.node.SyncingStatus;
 
 export interface IBeaconSync {
   state: SyncState;
   close(): void;
-  getSyncStatus(): phase0.SyncingStatus;
+  getSyncStatus(): SyncingStatus;
   isSynced(): boolean;
   isSyncing(): boolean;
   getSyncChainsDebugState(): SyncChainDebugState[];
@@ -53,5 +55,19 @@ export interface ISyncModules {
   metrics: IMetrics | null;
   logger: ILogger;
   chain: IBeaconChain;
-  gossipHandler?: BeaconGossipHandler;
+  wsCheckpoint?: phase0.Checkpoint;
+}
+
+export type PendingBlock = {
+  blockRootHex: RootHex;
+  parentBlockRootHex: RootHex;
+  signedBlock: allForks.SignedBeaconBlock;
+  peerIdStrs: Set<string>;
+  status: PendingBlockStatus;
+  downloadAttempts: number;
+};
+export enum PendingBlockStatus {
+  pending = "pending",
+  fetching = "fetching",
+  processing = "processing",
 }

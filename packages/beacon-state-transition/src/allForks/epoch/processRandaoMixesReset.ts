@@ -1,13 +1,18 @@
-import {allForks} from "@chainsafe/lodestar-types";
-import {getRandaoMix} from "../../util";
-import {IEpochProcess, CachedBeaconState} from "../util";
+import {EPOCHS_PER_HISTORICAL_VECTOR} from "@chainsafe/lodestar-params";
+import {EpochProcess, CachedBeaconStateAllForks} from "../../types.js";
 
-export function processRandaoMixesReset(state: CachedBeaconState<allForks.BeaconState>, process: IEpochProcess): void {
-  const {config} = state;
-  const currentEpoch = process.currentEpoch;
+/**
+ * Write next randaoMix
+ *
+ * PERF: Almost no (constant) cost
+ */
+export function processRandaoMixesReset(state: CachedBeaconStateAllForks, epochProcess: EpochProcess): void {
+  const currentEpoch = epochProcess.currentEpoch;
   const nextEpoch = currentEpoch + 1;
-  const {EPOCHS_PER_HISTORICAL_VECTOR} = config.params;
 
   // set randao mix
-  state.randaoMixes[nextEpoch % EPOCHS_PER_HISTORICAL_VECTOR] = getRandaoMix(config, state, currentEpoch);
+  state.randaoMixes.set(
+    nextEpoch % EPOCHS_PER_HISTORICAL_VECTOR,
+    state.randaoMixes.get(currentEpoch % EPOCHS_PER_HISTORICAL_VECTOR)
+  );
 }

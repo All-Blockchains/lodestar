@@ -1,22 +1,19 @@
-import crypto from "crypto";
-import bls, {init} from "@chainsafe/bls";
-import {BitList, List, TreeBacked} from "@chainsafe/ssz";
-import {config} from "@chainsafe/lodestar-config/mainnet";
-import {ValidatorIndex, BLSSignature} from "@chainsafe/lodestar-types";
-import {ZERO_HASH, FAR_FUTURE_EPOCH} from "../../../src/constants";
-import {generateState} from "../../utils/state";
-import {generateValidators} from "../../utils/validator";
+import crypto from "node:crypto";
 import {expect} from "chai";
-import {phase0, createCachedBeaconState, allForks} from "../../../src";
+import bls from "@chainsafe/bls";
+import {config} from "@chainsafe/lodestar-config/default";
+import {ValidatorIndex, BLSSignature} from "@chainsafe/lodestar-types";
+import {FAR_FUTURE_EPOCH, MAX_EFFECTIVE_BALANCE} from "@chainsafe/lodestar-params";
+import {BitArray} from "@chainsafe/ssz";
+import {ZERO_HASH} from "../../../src/constants/index.js";
+import {generateCachedState} from "../../utils/state.js";
+import {generateValidators} from "../../utils/validator.js";
+import {phase0, allForks} from "../../../src/index.js";
+
+const EMPTY_SIGNATURE = Buffer.alloc(96);
 
 describe("signatureSets", () => {
-  before("Init BLS", async () => {
-    await init("blst-native");
-  });
-
   it("should aggregate all signatures from a block", () => {
-    const EMPTY_SIGNATURE = Buffer.alloc(96);
-
     const block: phase0.BeaconBlock = {
       slot: 0,
       proposerIndex: 0,
@@ -35,20 +32,17 @@ describe("signatureSets", () => {
             {proposerIndex: 0, signature: EMPTY_SIGNATURE},
             {proposerIndex: 0, signature: EMPTY_SIGNATURE}
           ),
-        ] as List<phase0.ProposerSlashing>,
+        ],
         attesterSlashings: [
           getMockAttesterSlashings(
-            {attestingIndices: [0] as List<ValidatorIndex>, signature: EMPTY_SIGNATURE},
-            {attestingIndices: [0] as List<ValidatorIndex>, signature: EMPTY_SIGNATURE}
+            {attestingIndices: [0], signature: EMPTY_SIGNATURE},
+            {attestingIndices: [0], signature: EMPTY_SIGNATURE}
           ),
-        ] as List<phase0.AttesterSlashing>,
-        attestations: [
-          getMockAttestations({attestingIndices: [0] as List<ValidatorIndex>, signature: EMPTY_SIGNATURE}),
-        ] as List<phase0.Attestation>,
-        deposits: ([] as phase0.Deposit[]) as List<phase0.Deposit>,
-        voluntaryExits: [getMockSignedVoluntaryExit({validatorIndex: 0, signature: EMPTY_SIGNATURE})] as List<
-          phase0.SignedVoluntaryExit
-        >,
+        ],
+        // Set to 1 since there's only one validator per committee
+        attestations: [getMockAttestations(1)],
+        deposits: [] as phase0.Deposit[],
+        voluntaryExits: [getMockSignedVoluntaryExit({validatorIndex: 0, signature: EMPTY_SIGNATURE})],
       },
     };
 
@@ -59,7 +53,7 @@ describe("signatureSets", () => {
 
     // Generate active validators
     const validators = generateValidators(32, {
-      balance: config.params.MAX_EFFECTIVE_BALANCE,
+      balance: MAX_EFFECTIVE_BALANCE,
       activation: 0,
       exit: FAR_FUTURE_EPOCH,
     });
@@ -67,12 +61,7 @@ describe("signatureSets", () => {
       validator.pubkey = bls.SecretKey.fromKeygen().toPublicKey().toBytes();
     }
 
-    const state = createCachedBeaconState(
-      config,
-      config.types.phase0.BeaconState.createTreeBackedFromStruct(generateState({validators})) as TreeBacked<
-        allForks.BeaconState
-      >
-    );
+    const state = generateCachedState(config, {validators});
 
     const signatureSets = allForks.getAllBlockSignatureSets(state, signedBlock);
     expect(signatureSets.length).to.equal(
@@ -99,15 +88,15 @@ interface IBlockProposerData {
 
 function getMockProposerSlashings(data1: IBlockProposerData, data2: IBlockProposerData): phase0.ProposerSlashing {
   return {
-    signedHeader1: getMockSignedBeaconBlockHeader(data1),
-    signedHeader2: getMockSignedBeaconBlockHeader(data2),
+    signedHeader1: getMockSignedBeaconBlockHeaderBigint(data1),
+    signedHeader2: getMockSignedBeaconBlockHeaderBigint(data2),
   };
 }
 
-function getMockSignedBeaconBlockHeader(data: IBlockProposerData): phase0.SignedBeaconBlockHeader {
+function getMockSignedBeaconBlockHeaderBigint(data: IBlockProposerData): phase0.SignedBeaconBlockHeaderBigint {
   return {
     message: {
-      slot: 0,
+      slot: BigInt(0),
       proposerIndex: data.proposerIndex,
       parentRoot: ZERO_HASH,
       stateRoot: ZERO_HASH,
@@ -118,21 +107,21 @@ function getMockSignedBeaconBlockHeader(data: IBlockProposerData): phase0.Signed
 }
 
 interface IIndexAttestationData {
-  attestingIndices: List<ValidatorIndex>;
+  attestingIndices: ValidatorIndex[];
   signature: BLSSignature;
 }
 
 function getMockAttesterSlashings(data1: IIndexAttestationData, data2: IIndexAttestationData): phase0.AttesterSlashing {
   return {
-    attestation1: getMockIndexAttestation(data1),
-    attestation2: getMockIndexAttestation(data2),
+    attestation1: getMockIndexAttestationBn(data1),
+    attestation2: getMockIndexAttestationBn(data2),
   };
 }
 
-function getMockIndexAttestation(data: IIndexAttestationData): phase0.IndexedAttestation {
+function getMockIndexAttestationBn(data: IIndexAttestationData): phase0.IndexedAttestationBigint {
   return {
     attestingIndices: data.attestingIndices,
-    data: getAttestationData(),
+    data: getAttestationDataBigint(),
     signature: data.signature,
   };
 }
@@ -142,22 +131,26 @@ function getAttestationData(): phase0.AttestationData {
     slot: 0,
     index: 0,
     beaconBlockRoot: ZERO_HASH,
-    source: {
-      epoch: 0,
-      root: ZERO_HASH,
-    },
-    target: {
-      epoch: 0,
-      root: ZERO_HASH,
-    },
+    source: {epoch: 0, root: ZERO_HASH},
+    target: {epoch: 0, root: ZERO_HASH},
   };
 }
 
-function getMockAttestations(data: IIndexAttestationData): phase0.Attestation {
+function getAttestationDataBigint(): phase0.AttestationDataBigint {
   return {
-    aggregationBits: [true] as BitList,
+    slot: BigInt(0),
+    index: BigInt(0),
+    beaconBlockRoot: ZERO_HASH,
+    source: {epoch: BigInt(0), root: ZERO_HASH},
+    target: {epoch: BigInt(0), root: ZERO_HASH},
+  };
+}
+
+function getMockAttestations(bitLen: number): phase0.Attestation {
+  return {
+    aggregationBits: BitArray.fromSingleBit(bitLen, 0),
     data: getAttestationData(),
-    signature: data.signature,
+    signature: EMPTY_SIGNATURE,
   };
 }
 

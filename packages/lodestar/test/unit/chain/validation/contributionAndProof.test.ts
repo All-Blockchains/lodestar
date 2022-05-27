@@ -1,49 +1,44 @@
-import {initBLS} from "@chainsafe/lodestar-cli/src/util";
-import {config} from "@chainsafe/lodestar-config/minimal";
-import {ForkChoice, IForkChoice} from "@chainsafe/lodestar-fork-choice";
 import sinon from "sinon";
 import {SinonStubbedInstance} from "sinon";
-import {BeaconChain, IBeaconChain} from "../../../../src/chain";
-import {LocalClock} from "../../../../src/chain/clock";
-import {SyncCommitteeErrorCode} from "../../../../src/chain/errors/syncCommitteeError";
-import {expectRejectedWithLodestarError} from "../../../utils/errors";
-import {StubbedBeaconDb} from "../../../utils/stub";
-import {generateSignedContributionAndProof} from "../../../utils/contributionAndProof";
-import {validateSyncCommitteeGossipContributionAndProof} from "../../../../src/chain/validation/syncCommitteeContributionAndProof";
-import * as syncCommitteeUtils from "@chainsafe/lodestar-beacon-state-transition/lib/util/syncCommittee";
-import {SinonStubFn} from "../../../utils/types";
-import {generateCachedState} from "../../../utils/state";
-import {phase0} from "@chainsafe/lodestar-types";
+import {defaultChainConfig} from "@chainsafe/lodestar-config";
+import {BitArray} from "@chainsafe/ssz";
+import {SLOTS_PER_EPOCH, SYNC_COMMITTEE_SUBNET_SIZE} from "@chainsafe/lodestar-params";
+import {createIChainForkConfig} from "@chainsafe/lodestar-config";
+import {BeaconChain, IBeaconChain} from "../../../../src/chain/index.js";
+import {LocalClock} from "../../../../src/chain/clock/index.js";
+import {SyncCommitteeErrorCode} from "../../../../src/chain/errors/syncCommitteeError.js";
+import {expectRejectedWithLodestarError} from "../../../utils/errors.js";
+import {generateSignedContributionAndProof} from "../../../utils/contributionAndProof.js";
+import {validateSyncCommitteeGossipContributionAndProof} from "../../../../src/chain/validation/syncCommitteeContributionAndProof.js";
+// eslint-disable-next-line no-restricted-imports
+import * as syncCommitteeUtils from "../../../../../beacon-state-transition/src/util/aggregator.js";
+import {SinonStubFn} from "../../../utils/types.js";
+import {generateCachedStateWithPubkeys} from "../../../utils/state.js";
+import {SeenContributionAndProof} from "../../../../src/chain/seenCache/index.js";
 
-// https://github.com/ethereum/eth2.0-specs/blob/v1.1.0-alpha.3/specs/altair/p2p-interface.md
-describe("Sync Committee Contribution And Proof validation", function () {
+// https://github.com/ethereum/consensus-specs/blob/v1.1.10/specs/altair/p2p-interface.md
+// TODO remove stub
+describe.skip("Sync Committee Contribution And Proof validation", function () {
   const sandbox = sinon.createSandbox();
   let chain: SinonStubbedInstance<IBeaconChain>;
-  let forkChoiceStub: SinonStubbedInstance<IForkChoice>;
-  let db: StubbedBeaconDb;
+  let clockStub: SinonStubbedInstance<LocalClock>;
   let isSyncCommitteeAggregatorStub: SinonStubFn<typeof syncCommitteeUtils["isSyncCommitteeAggregator"]>;
 
-  let altairForkEpochBk: phase0.Epoch;
   const altairForkEpoch = 2020;
-
-  before(async function () {
-    await initBLS();
-    altairForkEpochBk = config.params.ALTAIR_FORK_EPOCH;
-    config.params.ALTAIR_FORK_EPOCH = altairForkEpoch;
-  });
-
-  after(function () {
-    config.params.ALTAIR_FORK_EPOCH = altairForkEpochBk;
-  });
+  const currentSlot = SLOTS_PER_EPOCH * (altairForkEpoch + 1);
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  const config = createIChainForkConfig(Object.assign({}, defaultChainConfig, {ALTAIR_FORK_EPOCH: altairForkEpoch}));
+  // all validators have same pubkey
+  const aggregatorIndex = 15;
 
   beforeEach(function () {
     chain = sandbox.createStubInstance(BeaconChain);
-    chain.getGenesisTime.returns(Math.floor(Date.now() / 1000));
-    chain.clock = sandbox.createStubInstance(LocalClock);
-    sandbox.stub(chain.clock, "currentSlot").get(() => 2);
-    forkChoiceStub = sandbox.createStubInstance(ForkChoice);
-    chain.forkChoice = forkChoiceStub;
-    db = new StubbedBeaconDb(sandbox, config);
+    (chain as {
+      seenContributionAndProof: SeenContributionAndProof;
+    }).seenContributionAndProof = new SeenContributionAndProof(null);
+    clockStub = sandbox.createStubInstance(LocalClock);
+    chain.clock = clockStub;
+    clockStub.isCurrentSlotGivenGossipDisparity.returns(true);
     isSyncCommitteeAggregatorStub = sandbox.stub(syncCommitteeUtils, "isSyncCommitteeAggregator");
   });
 
@@ -51,83 +46,81 @@ describe("Sync Committee Contribution And Proof validation", function () {
     sandbox.restore();
   });
 
-  it("should throw error - the signature's slot is in the past", async function () {
-    const signedContributionAndProof = generateSignedContributionAndProof({contribution: {slot: 1}});
+  it("should throw error - the signature's slot is not the current", async function () {
+    clockStub.isCurrentSlotGivenGossipDisparity.returns(false);
+    sandbox.stub(clockStub, "currentSlot").get(() => 100);
+
+    const signedContributionAndProof = generateSignedContributionAndProof({contribution: {slot: 1}, aggregatorIndex});
     await expectRejectedWithLodestarError(
-      validateSyncCommitteeGossipContributionAndProof(config, chain, db, {
-        contributionAndProof: signedContributionAndProof,
-        validSignature: false,
-      }),
+      validateSyncCommitteeGossipContributionAndProof(chain, signedContributionAndProof),
       SyncCommitteeErrorCode.NOT_CURRENT_SLOT
     );
   });
 
-  it("should throw error - the signature's slot is in the future", async function () {
-    const signedContributionAndProof = generateSignedContributionAndProof({contribution: {slot: 3}});
-    await expectRejectedWithLodestarError(
-      validateSyncCommitteeGossipContributionAndProof(config, chain, db, {
-        contributionAndProof: signedContributionAndProof,
-        validSignature: false,
-      }),
-      SyncCommitteeErrorCode.NOT_CURRENT_SLOT
-    );
-  });
-
-  it("should throw error - the block being signed over has not been seen", async function () {
-    const signedContributionAndProof = generateSignedContributionAndProof({contribution: {slot: 2}});
-    forkChoiceStub.hasBlock.returns(false);
-
-    await expectRejectedWithLodestarError(
-      validateSyncCommitteeGossipContributionAndProof(config, chain, db, {
-        contributionAndProof: signedContributionAndProof,
-        validSignature: false,
-      }),
-      SyncCommitteeErrorCode.UNKNOWN_BEACON_BLOCK_ROOT
-    );
-  });
-
-  it("should throw error - subCommitteeIndex is not in allowed range", async function () {
+  it("should throw error - subcommitteeIndex is not in allowed range", async function () {
     const signedContributionAndProof = generateSignedContributionAndProof({
-      contribution: {slot: 2, subCommitteeIndex: 10000},
+      contribution: {slot: currentSlot, subcommitteeIndex: 10000},
+      aggregatorIndex,
     });
-    forkChoiceStub.hasBlock.returns(true);
 
     await expectRejectedWithLodestarError(
-      validateSyncCommitteeGossipContributionAndProof(config, chain, db, {
-        contributionAndProof: signedContributionAndProof,
-        validSignature: false,
-      }),
-      SyncCommitteeErrorCode.INVALID_SUB_COMMITTEE_INDEX
+      validateSyncCommitteeGossipContributionAndProof(chain, signedContributionAndProof),
+      SyncCommitteeErrorCode.INVALID_SUBCOMMITTEE_INDEX
+    );
+  });
+
+  it("should throw error - same contribution data with superset of aggregationBits already known", async function () {
+    const signedContributionAndProof = generateSignedContributionAndProof({
+      contribution: {slot: currentSlot},
+      aggregatorIndex,
+    });
+    const headState = await generateCachedStateWithPubkeys({slot: currentSlot}, config, true);
+    chain.getHeadState.returns(headState);
+    chain.seenContributionAndProof.participantsKnown = () => true;
+    await expectRejectedWithLodestarError(
+      validateSyncCommitteeGossipContributionAndProof(chain, signedContributionAndProof),
+      SyncCommitteeErrorCode.SYNC_COMMITTEE_PARTICIPANTS_ALREADY_KNOWN
     );
   });
 
   it("should throw error - there is same contribution with same aggregator and index and slot", async function () {
-    const signedContributionAndProof = generateSignedContributionAndProof({contribution: {slot: 2}});
-    forkChoiceStub.hasBlock.returns(true);
-    const headState = generateCachedState({slot: 32 * (altairForkEpoch + 1)}, config, true);
+    const signedContributionAndProof = generateSignedContributionAndProof({
+      contribution: {slot: currentSlot},
+      aggregatorIndex,
+    });
+    const headState = await generateCachedStateWithPubkeys({slot: currentSlot}, config, true);
     chain.getHeadState.returns(headState);
-    db.syncCommitteeContribution.has.returns(true);
+    chain.seenContributionAndProof.isAggregatorKnown = () => true;
     await expectRejectedWithLodestarError(
-      validateSyncCommitteeGossipContributionAndProof(config, chain, db, {
-        contributionAndProof: signedContributionAndProof,
-        validSignature: false,
-      }),
-      SyncCommitteeErrorCode.SYNC_COMMITTEE_ALREADY_KNOWN
+      validateSyncCommitteeGossipContributionAndProof(chain, signedContributionAndProof),
+      SyncCommitteeErrorCode.SYNC_COMMITTEE_AGGREGATOR_ALREADY_KNOWN
+    );
+  });
+
+  it("should throw error - no participant", async function () {
+    const signedContributionAndProof = generateSignedContributionAndProof({
+      contribution: {slot: currentSlot},
+      aggregatorIndex,
+    });
+    const headState = await generateCachedStateWithPubkeys({slot: currentSlot}, config, true);
+    chain.getHeadState.returns(headState);
+    isSyncCommitteeAggregatorStub.returns(false);
+    await expectRejectedWithLodestarError(
+      validateSyncCommitteeGossipContributionAndProof(chain, signedContributionAndProof),
+      SyncCommitteeErrorCode.NO_PARTICIPANT
     );
   });
 
   it("should throw error - invalid aggregator", async function () {
-    const signedContributionAndProof = generateSignedContributionAndProof({contribution: {slot: 2}});
-    forkChoiceStub.hasBlock.returns(true);
-    db.syncCommitteeContribution.has.returns(false);
-    const headState = generateCachedState({slot: 32 * (altairForkEpoch + 1)}, config, true);
+    const signedContributionAndProof = generateSignedContributionAndProof({
+      contribution: {slot: currentSlot, aggregationBits: BitArray.fromSingleBit(SYNC_COMMITTEE_SUBNET_SIZE, 0)},
+      aggregatorIndex,
+    });
+    const headState = await generateCachedStateWithPubkeys({slot: currentSlot}, config, true);
     chain.getHeadState.returns(headState);
     isSyncCommitteeAggregatorStub.returns(false);
     await expectRejectedWithLodestarError(
-      validateSyncCommitteeGossipContributionAndProof(config, chain, db, {
-        contributionAndProof: signedContributionAndProof,
-        validSignature: false,
-      }),
+      validateSyncCommitteeGossipContributionAndProof(chain, signedContributionAndProof),
       SyncCommitteeErrorCode.INVALID_AGGREGATOR
     );
   });
@@ -136,35 +129,31 @@ describe("Sync Committee Contribution And Proof validation", function () {
    * Skip this spec: [REJECT] The aggregator's validator index is within the current sync committee -- i.e. state.validators[contribution_and_proof.aggregator_index].pubkey in state.current_sync_committee.pubkeys.
    * because we check the aggregator index already and we always sync sync pubkeys with indices
    */
-  it.skip("should throw error - aggregator index is not in sync committee", async function () {
-    const signedContributionAndProof = generateSignedContributionAndProof({contribution: {slot: 2}});
-    forkChoiceStub.hasBlock.returns(true);
-    db.syncCommitteeContribution.has.returns(false);
+  it("should throw error - aggregator index is not in sync committee", async function () {
+    const signedContributionAndProof = generateSignedContributionAndProof({
+      contribution: {slot: currentSlot},
+      aggregatorIndex: Infinity,
+    });
     isSyncCommitteeAggregatorStub.returns(true);
-    const headState = generateCachedState({slot: 32 * (altairForkEpoch + 1)}, config, true);
+    const headState = await generateCachedStateWithPubkeys({slot: currentSlot}, config, true);
     chain.getHeadState.returns(headState);
     await expectRejectedWithLodestarError(
-      validateSyncCommitteeGossipContributionAndProof(config, chain, db, {
-        contributionAndProof: signedContributionAndProof,
-        validSignature: false,
-      }),
-      SyncCommitteeErrorCode.AGGREGATOR_PUBKEY_UNKNOWN
+      validateSyncCommitteeGossipContributionAndProof(chain, signedContributionAndProof),
+      SyncCommitteeErrorCode.VALIDATOR_NOT_IN_SYNC_COMMITTEE
     );
   });
 
   it("should throw error - invalid selection_proof signature", async function () {
-    const signedContributionAndProof = generateSignedContributionAndProof({contribution: {slot: 2}});
-    forkChoiceStub.hasBlock.returns(true);
-    db.syncCommitteeContribution.has.returns(false);
+    const signedContributionAndProof = generateSignedContributionAndProof({
+      contribution: {slot: currentSlot, aggregationBits: BitArray.fromSingleBit(SYNC_COMMITTEE_SUBNET_SIZE, 0)},
+      aggregatorIndex,
+    });
     isSyncCommitteeAggregatorStub.returns(true);
-    const headState = generateCachedState({slot: 32 * (altairForkEpoch + 1)}, config, true);
+    const headState = await generateCachedStateWithPubkeys({slot: currentSlot}, config, true);
     chain.getHeadState.returns(headState);
     chain.bls = {verifySignatureSets: async () => false};
     await expectRejectedWithLodestarError(
-      validateSyncCommitteeGossipContributionAndProof(config, chain, db, {
-        contributionAndProof: signedContributionAndProof,
-        validSignature: false,
-      }),
+      validateSyncCommitteeGossipContributionAndProof(chain, signedContributionAndProof),
       SyncCommitteeErrorCode.INVALID_SIGNATURE
     );
   });

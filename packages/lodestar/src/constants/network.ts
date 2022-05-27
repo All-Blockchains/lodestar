@@ -2,20 +2,15 @@
 
 /**
  * For more info on some of these constants:
- * https://github.com/ethereum/eth2.0-specs/blob/dev/specs/phase0/p2p-interface.md#configuration
+ * https://github.com/ethereum/consensus-specs/blob/v1.1.10/specs/phase0/p2p-interface.md#configuration
  */
 
 // Gossip constants
 
 /**
- * Rationale: https://github.com/ethereum/eth2.0-specs/blob/dev/specs/phase0/p2p-interface.md#why-are-there-attestation_subnet_count-attestation-subnets
- */
-export const ATTESTATION_SUBNET_COUNT = 64;
-
-/**
  * The maximum number of slots during which an attestation can be propagated.
  */
-export const ATTESTATION_PROPAGATION_SLOT_RANGE = 23;
+export const ATTESTATION_PROPAGATION_SLOT_RANGE = 32;
 
 //  Request/Response constants
 
@@ -33,6 +28,14 @@ export enum RespStatus {
    * The responder encountered an error while processing the request. The response payload adheres to the ErrorMessage schema
    */
   SERVER_ERROR = 2,
+  /**
+   * The responder does not have requested resource.  The response payload adheres to the ErrorMessage schema (described below). Note: This response code is only valid as a response to BlocksByRange
+   */
+  RESOURCE_UNAVAILABLE = 3,
+  /**
+   * Our node does not have bandwidth to serve requests due to either per-peer quota or total quota.
+   */
+  RATE_LIMITED = 139,
 }
 
 export type RpcResponseStatusError = Exclude<RespStatus, RespStatus.SUCCESS>;
@@ -41,7 +44,6 @@ export type RpcResponseStatusError = Exclude<RespStatus, RespStatus.SUCCESS>;
 export const GOSSIP_MAX_SIZE = 2 ** 20;
 /** The maximum allowed size of uncompressed req/resp chunked responses. */
 export const MAX_CHUNK_SIZE = 2 ** 20;
-
 /** The maximum time to wait for first byte of request response (time-to-first-byte). */
 export const TTFB_TIMEOUT = 5 * 1000; // 5 sec
 /** The maximum time for complete response transfer. */

@@ -2,34 +2,46 @@ import chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import pipe from "it-pipe";
 import all from "it-all";
-import {params} from "@chainsafe/lodestar-params/minimal";
-import {ForkName, createIBeaconConfig} from "@chainsafe/lodestar-config";
+import {ForkName, SLOTS_PER_EPOCH} from "@chainsafe/lodestar-params";
+import {chainConfig} from "@chainsafe/lodestar-config/default";
+import {createIBeaconConfig} from "@chainsafe/lodestar-config";
 import {LodestarError} from "@chainsafe/lodestar-utils";
-import {Method, Version, Encoding, Protocol, ResponseBody} from "../../../../../src/network/reqresp/types";
-import {getResponseSzzTypeByMethod} from "../../../../../src/network/reqresp/types";
-import {SszSnappyError, SszSnappyErrorCode} from "../../../../../src/network/reqresp/encodingStrategies/sszSnappy";
-import {responseDecode} from "../../../../../src/network/reqresp/encoders/responseDecode";
+import {allForks} from "@chainsafe/lodestar-types";
+import {
+  Method,
+  Version,
+  Encoding,
+  Protocol,
+  IncomingResponseBody,
+  OutgoingResponseBody,
+} from "../../../../../src/network/reqresp/types.js";
+import {getResponseSzzTypeByMethod} from "../../../../../src/network/reqresp/types.js";
+import {
+  SszSnappyError,
+  SszSnappyErrorCode,
+} from "../../../../../src/network/reqresp/encodingStrategies/sszSnappy/index.js";
+import {responseDecode} from "../../../../../src/network/reqresp/encoders/responseDecode.js";
 import {
   getForkNameFromResponseBody,
   responseEncodeError,
   responseEncodeSuccess,
-} from "../../../../../src/network/reqresp/encoders/responseEncode";
-import {ResponseError} from "../../../../../src/network/reqresp/response";
-import {RespStatus} from "../../../../../src/constants";
-import {ForkDigestContext} from "../../../../../src/util/forkDigestContext";
-import {expectIsEqualSszTypeArr} from "../../../../utils/ssz";
-import {expectRejectedWithLodestarError} from "../../../../utils/errors";
-import {arrToSource, expectEqualByteChunks} from "../utils";
+} from "../../../../../src/network/reqresp/encoders/responseEncode.js";
+import {ResponseError} from "../../../../../src/network/reqresp/response/index.js";
+import {RespStatus, ZERO_HASH} from "../../../../../src/constants/index.js";
+import {expectIsEqualSszTypeArr} from "../../../../utils/ssz.js";
+import {expectRejectedWithLodestarError} from "../../../../utils/errors.js";
+import {arrToSource, expectEqualByteChunks} from "../utils.js";
 import {
   sszSnappyPing,
   sszSnappySignedBeaconBlockPhase0,
   sszSnappySignedBeaconBlockAltair,
-} from "../encodingStrategies/sszSnappy/testData";
+} from "../encodingStrategies/sszSnappy/testData.js";
+import {blocksToReqRespBlockResponses} from "../../../../utils/block.js";
 
 chai.use(chaiAsPromised);
 
 type ResponseChunk =
-  | {status: RespStatus.SUCCESS; body: ResponseBody}
+  | {status: RespStatus.SUCCESS; body: IncomingResponseBody}
   | {status: Exclude<RespStatus, RespStatus.SUCCESS>; errorMessage: string};
 
 describe("network / reqresp / encoders / response - Success and error cases", () => {
@@ -39,14 +51,12 @@ describe("network / reqresp / encoders / response - Success and error cases", ()
   // Set the altair fork to happen between the two precomputed SSZ snappy blocks
   const slotBlockPhase0 = sszSnappySignedBeaconBlockPhase0.body.message.slot;
   const slotBlockAltair = sszSnappySignedBeaconBlockAltair.body.message.slot;
-  if (slotBlockAltair - slotBlockPhase0 < params.SLOTS_PER_EPOCH) {
+  if (slotBlockAltair - slotBlockPhase0 < SLOTS_PER_EPOCH) {
     throw Error("phase0 block slot must be an epoch apart from altair block slot");
   }
-  const ALTAIR_FORK_EPOCH = Math.floor(slotBlockAltair / params.SLOTS_PER_EPOCH);
+  const ALTAIR_FORK_EPOCH = Math.floor(slotBlockAltair / SLOTS_PER_EPOCH);
   // eslint-disable-next-line @typescript-eslint/naming-convention
-  const config = createIBeaconConfig({...params, ALTAIR_FORK_EPOCH});
-
-  const forkDigestContext = new ForkDigestContext(config, Buffer.alloc(32, 0));
+  const config = createIBeaconConfig({...chainConfig, ALTAIR_FORK_EPOCH}, ZERO_HASH);
 
   const testCases: {
     id: string;
@@ -114,7 +124,7 @@ describe("network / reqresp / encoders / response - Success and error cases", ()
         // <result>
         Buffer.from([RespStatus.SUCCESS]),
         // <context-bytes>
-        forkDigestContext.forkName2ForkDigest(ForkName.phase0) as Buffer,
+        config.forkName2ForkDigest(ForkName.phase0) as Buffer,
         // <encoding-dependent-header> | <encoded-payload>
         ...sszSnappySignedBeaconBlockPhase0.chunks,
       ],
@@ -129,7 +139,7 @@ describe("network / reqresp / encoders / response - Success and error cases", ()
         // <result>
         Buffer.from([RespStatus.SUCCESS]),
         // <context-bytes>
-        forkDigestContext.forkName2ForkDigest(ForkName.altair) as Buffer,
+        config.forkName2ForkDigest(ForkName.altair) as Buffer,
         // <encoding-dependent-header> | <encoded-payload>
         ...sszSnappySignedBeaconBlockAltair.chunks,
       ],
@@ -202,11 +212,11 @@ describe("network / reqresp / encoders / response - Success and error cases", ()
       chunks: [
         // Chunk 0 - success block in phase0 with context bytes
         Buffer.from([RespStatus.SUCCESS]),
-        forkDigestContext.forkName2ForkDigest(ForkName.phase0) as Buffer,
+        config.forkName2ForkDigest(ForkName.phase0) as Buffer,
         ...sszSnappySignedBeaconBlockPhase0.chunks,
         // Chunk 1 - success block in altair with context bytes
         Buffer.from([RespStatus.SUCCESS]),
-        forkDigestContext.forkName2ForkDigest(ForkName.altair) as Buffer,
+        config.forkName2ForkDigest(ForkName.altair) as Buffer,
         ...sszSnappySignedBeaconBlockAltair.chunks,
       ],
     },
@@ -246,7 +256,14 @@ describe("network / reqresp / encoders / response - Success and error cases", ()
   async function* responseEncode(responseChunks: ResponseChunk[], protocol: Protocol): AsyncIterable<Buffer> {
     for (const chunk of responseChunks) {
       if (chunk.status === RespStatus.SUCCESS) {
-        yield* pipe(arrToSource([chunk.body]), responseEncodeSuccess(config, forkDigestContext, protocol));
+        const lodestarResponseBodies =
+          protocol.method === Method.BeaconBlocksByRange || protocol.method === Method.BeaconBlocksByRoot
+            ? blocksToReqRespBlockResponses([chunk.body] as allForks.SignedBeaconBlock[], config)
+            : [chunk.body];
+        yield* pipe(
+          arrToSource(lodestarResponseBodies as OutgoingResponseBody[]),
+          responseEncodeSuccess(config, protocol)
+        );
       } else {
         yield* responseEncodeError(chunk.status, chunk.errorMessage);
       }
@@ -269,11 +286,7 @@ describe("network / reqresp / encoders / response - Success and error cases", ()
 
     if (chunks) {
       it(`${id} - responseDecode`, async () => {
-        const responseDecodePromise = pipe(
-          arrToSource(chunks),
-          responseDecode(config, forkDigestContext, protocol),
-          all
-        );
+        const responseDecodePromise = pipe(arrToSource(chunks), responseDecode(config, protocol), all);
 
         if (decodeError) {
           await expectRejectedWithLodestarError(responseDecodePromise, decodeError);
@@ -281,7 +294,7 @@ describe("network / reqresp / encoders / response - Success and error cases", ()
           const responses = await responseDecodePromise;
           const typeArr = responses.map((body) => {
             const forkName = getForkNameFromResponseBody(config, protocol, body);
-            return getResponseSzzTypeByMethod(config, method, forkName);
+            return getResponseSzzTypeByMethod(protocol, forkName);
           });
           expectIsEqualSszTypeArr(typeArr, responses, onlySuccessChunks(responseChunks), "Response chunks");
         } else {
@@ -307,8 +320,8 @@ describe("network / reqresp / encoders / response - Success and error cases", ()
   }
 });
 
-function onlySuccessChunks(responseChunks: ResponseChunk[]): ResponseBody[] {
-  const bodyArr: ResponseBody[] = [];
+function onlySuccessChunks(responseChunks: ResponseChunk[]): IncomingResponseBody[] {
+  const bodyArr: IncomingResponseBody[] = [];
   for (const chunk of responseChunks) {
     if (chunk.status === RespStatus.SUCCESS) bodyArr.push(chunk.body);
   }

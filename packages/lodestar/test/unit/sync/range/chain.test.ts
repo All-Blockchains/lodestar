@@ -1,17 +1,16 @@
-import {config} from "@chainsafe/lodestar-config/minimal";
+import {config} from "@chainsafe/lodestar-config/default";
+import {SLOTS_PER_EPOCH} from "@chainsafe/lodestar-params";
 import {Epoch, phase0, Slot} from "@chainsafe/lodestar-types";
-import {linspace} from "../../../../src/util/numpy";
-import {generateEmptyBlock, generateEmptySignedBlock} from "../../../utils/block";
-import {SyncChain, SyncChainFns, ChainTarget} from "../../../../src/sync/range/chain";
 import {computeStartSlotAtEpoch} from "@chainsafe/lodestar-beacon-state-transition";
-import {RangeSyncType} from "../../../../src/sync/utils/remoteSyncType";
-import {ZERO_HASH} from "../../../../src/constants";
-import {testLogger} from "../../../utils/logger";
-import {getValidPeerId} from "../../../utils/peer";
+import {linspace} from "../../../../src/util/numpy.js";
+import {generateEmptyBlock, generateEmptySignedBlock} from "../../../utils/block.js";
+import {SyncChain, SyncChainFns, ChainTarget} from "../../../../src/sync/range/chain.js";
+import {RangeSyncType} from "../../../../src/sync/utils/remoteSyncType.js";
+import {ZERO_HASH} from "../../../../src/constants/index.js";
+import {testLogger} from "../../../utils/logger.js";
+import {getValidPeerId} from "../../../utils/peer.js";
 
 describe("sync / range / chain", () => {
-  const {SLOTS_PER_EPOCH} = config.params;
-
   const testCases: {
     id: string;
     startEpoch: Epoch;
@@ -59,7 +58,7 @@ describe("sync / range / chain", () => {
   const reportPeer: SyncChainFns["reportPeer"] = () => {};
 
   afterEach(() => {
-    if (interval) clearInterval(interval);
+    if (interval !== null) clearInterval(interval);
   });
 
   for (const {id, startEpoch, targetEpoch, badBlocks, skippedSlots} of testCases) {
@@ -89,13 +88,14 @@ describe("sync / range / chain", () => {
         return blocks;
       };
 
-      const target: ChainTarget = {slot: computeStartSlotAtEpoch(config, targetEpoch), root: ZERO_HASH};
+      const target: ChainTarget = {slot: computeStartSlotAtEpoch(targetEpoch), root: ZERO_HASH};
       const syncType = RangeSyncType.Finalized;
 
       await new Promise<void>((resolve, reject) => {
         const onEnd: SyncChainFns["onEnd"] = (err) => (err ? reject(err) : resolve());
         const initialSync = new SyncChain(
           startEpoch,
+          target,
           syncType,
           {processChainSegment, downloadBeaconBlocksByRange, reportPeer, onEnd},
           {config, logger}
@@ -120,13 +120,14 @@ describe("sync / range / chain", () => {
       generateEmptySignedBlock(),
     ];
 
-    const target: ChainTarget = {slot: computeStartSlotAtEpoch(config, targetEpoch), root: ZERO_HASH};
+    const target: ChainTarget = {slot: computeStartSlotAtEpoch(targetEpoch), root: ZERO_HASH};
     const syncType = RangeSyncType.Finalized;
 
     await new Promise<void>((resolve, reject) => {
       const onEnd: SyncChainFns["onEnd"] = (err) => (err ? reject(err) : resolve());
       const initialSync = new SyncChain(
         startEpoch,
+        target,
         syncType,
         {processChainSegment, downloadBeaconBlocksByRange, reportPeer, onEnd},
         {config, logger}

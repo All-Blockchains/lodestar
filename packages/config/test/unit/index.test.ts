@@ -1,6 +1,6 @@
 import {expect} from "chai";
-import {ForkName} from "../../src";
-import {config} from "../../src/presets/mainnet";
+import {ForkName} from "@chainsafe/lodestar-params";
+import {config} from "../../src/default.js";
 
 describe("forks", () => {
   it("Forks should be in ascending order", () => {
@@ -9,7 +9,8 @@ describe("forks", () => {
       const fork1 = forks[i];
       const fork2 = forks[i + 1];
 
-      expect(fork1.epoch < fork2.epoch).to.be.equal(
+      // Use less equal to be okay with both forks being at Infinity
+      expect(fork1.epoch <= fork2.epoch).to.be.equal(
         true,
         `Forks are not sorted ${fork1.name} ${fork1.epoch} -> ${fork2.name} ${fork2.epoch}`
       );

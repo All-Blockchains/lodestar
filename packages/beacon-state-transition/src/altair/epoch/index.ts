@@ -1,5 +1,4 @@
-import {allForks, altair} from "@chainsafe/lodestar-types";
-import {prepareEpochProcessState, CachedBeaconState} from "../../allForks/util";
+import {CachedBeaconStateAltair, EpochProcess} from "../../types.js";
 import {
   processJustificationAndFinalization,
   processRegistryUpdates,
@@ -8,34 +7,35 @@ import {
   processSlashingsReset,
   processRandaoMixesReset,
   processHistoricalRootsUpdate,
-} from "../../allForks/epoch";
-import {processRewardsAndPenalties} from "./processRewardsAndPenalties";
-import {processSlashings} from "./processSlashings";
-import {processParticipationFlagUpdates} from "./processParticipationFlagUpdates";
-import {processInactivityUpdates} from "./processInactivityUpdates";
-import {processSyncCommitteeUpdates} from "./processSyncCommitteeUpdates";
+} from "../../allForks/epoch/index.js";
+import {processRewardsAndPenalties} from "./processRewardsAndPenalties.js";
+import {processSlashings} from "./processSlashings.js";
+import {processParticipationFlagUpdates} from "./processParticipationFlagUpdates.js";
+import {processInactivityUpdates} from "./processInactivityUpdates.js";
+import {processSyncCommitteeUpdates} from "./processSyncCommitteeUpdates.js";
+
+// For spec tests
+export {getRewardsAndPenalties} from "./getRewardsAndPenalties.js";
 
 export {
-  processJustificationAndFinalization,
+  processInactivityUpdates,
   processRewardsAndPenalties,
-  processRegistryUpdates,
   processSlashings,
   processSyncCommitteeUpdates,
-  processEffectiveBalanceUpdates,
+  processParticipationFlagUpdates,
 };
 
-export function processEpoch(state: CachedBeaconState<altair.BeaconState>): void {
-  const process = prepareEpochProcessState(state);
-  processJustificationAndFinalization(state as CachedBeaconState<allForks.BeaconState>, process);
-  processInactivityUpdates(state, process);
-  processRewardsAndPenalties(state, process);
-  processRegistryUpdates(state as CachedBeaconState<allForks.BeaconState>, process);
-  processSlashings(state, process);
-  processEth1DataReset(state as CachedBeaconState<allForks.BeaconState>, process);
-  processEffectiveBalanceUpdates(state as CachedBeaconState<allForks.BeaconState>, process);
-  processSlashingsReset(state as CachedBeaconState<allForks.BeaconState>, process);
-  processRandaoMixesReset(state as CachedBeaconState<allForks.BeaconState>, process);
-  processHistoricalRootsUpdate(state as CachedBeaconState<allForks.BeaconState>, process);
+export function processEpoch(state: CachedBeaconStateAltair, epochProcess: EpochProcess): void {
+  processJustificationAndFinalization(state, epochProcess);
+  processInactivityUpdates(state, epochProcess);
+  processRewardsAndPenalties(state, epochProcess);
+  processRegistryUpdates(state, epochProcess);
+  processSlashings(state, epochProcess);
+  processEth1DataReset(state, epochProcess);
+  processEffectiveBalanceUpdates(state, epochProcess);
+  processSlashingsReset(state, epochProcess);
+  processRandaoMixesReset(state, epochProcess);
+  processHistoricalRootsUpdate(state, epochProcess);
   processParticipationFlagUpdates(state);
-  processSyncCommitteeUpdates(state, process);
+  processSyncCommitteeUpdates(state);
 }

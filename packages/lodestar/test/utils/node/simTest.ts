@@ -1,14 +1,21 @@
-import {computeEpochAtSlot, computeStartSlotAtEpoch} from "@chainsafe/lodestar-beacon-state-transition";
-import {CachedBeaconState, prepareEpochProcessState} from "@chainsafe/lodestar-beacon-state-transition/lib/allForks";
+import {
+  computeEpochAtSlot,
+  computeStartSlotAtEpoch,
+  allForks,
+  CachedBeaconStateAllForks,
+  beforeProcessEpoch,
+} from "@chainsafe/lodestar-beacon-state-transition";
 import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {IBlockSummary} from "@chainsafe/lodestar-fork-choice";
-import {allForks, Epoch, Slot} from "@chainsafe/lodestar-types";
-import {BeaconBlock} from "@chainsafe/lodestar-types/lib/allForks";
+import {IProtoBlock} from "@chainsafe/lodestar-fork-choice";
+import {SLOTS_PER_EPOCH, SLOTS_PER_HISTORICAL_ROOT} from "@chainsafe/lodestar-params";
+import {Epoch, Slot} from "@chainsafe/lodestar-types";
 import {Checkpoint} from "@chainsafe/lodestar-types/phase0";
 import {ILogger, mapValues} from "@chainsafe/lodestar-utils";
-import {BeaconNode} from "../../../src";
-import {ChainEvent} from "../../../src/chain";
-import {linspace} from "../../../src/util/numpy";
+import {toHexString} from "@chainsafe/ssz";
+import {BeaconNode} from "../../../src/index.js";
+import {ChainEvent} from "../../../src/chain/index.js";
+import {linspace} from "../../../src/util/numpy.js";
+import {RegenCaller} from "../../../src/chain/regen/index.js";
 
 /* eslint-disable no-console */
 
@@ -20,7 +27,7 @@ export function simTestInfoTracker(bn: BeaconNode, logger: ILogger): () => void 
   const prevParticipationPerEpoch = new Map<Epoch, number>();
   const currParticipationPerEpoch = new Map<Epoch, number>();
 
-  async function onHead(head: IBlockSummary): Promise<void> {
+  async function onHead(head: IProtoBlock): Promise<void> {
     const slot = head.slot;
 
     // For each block
@@ -35,18 +42,20 @@ export function simTestInfoTracker(bn: BeaconNode, logger: ILogger): () => void 
     }
   }
 
-  function logParticipation(state: CachedBeaconState<allForks.BeaconState>): void {
+  function logParticipation(state: CachedBeaconStateAllForks): void {
     // Compute participation (takes 5ms with 64 validators)
-    // Need a CachedBeaconState<allForks.BeaconState> where (state.slot + 1) % SLOTS_EPOCH == 0
-    const process = prepareEpochProcessState(state);
-    const epoch = computeEpochAtSlot(bn.config, state.slot);
+    // Need a CachedBeaconStateAllForks where (state.slot + 1) % SLOTS_EPOCH == 0
+    const epochProcess = beforeProcessEpoch(state);
+    const epoch = computeEpochAtSlot(state.slot);
 
-    const prevParticipation = Number(process.prevEpochUnslashedStake.targetStake) / Number(process.totalActiveStake);
-    const currParticipation = Number(process.currEpochUnslashedTargetStake) / Number(process.totalActiveStake);
+    const prevParticipation =
+      epochProcess.prevEpochUnslashedStake.targetStakeByIncrement / epochProcess.totalActiveStakeByIncrement;
+    const currParticipation =
+      epochProcess.currEpochUnslashedTargetStakeByIncrement / epochProcess.totalActiveStakeByIncrement;
     prevParticipationPerEpoch.set(epoch - 1, prevParticipation);
     currParticipationPerEpoch.set(epoch, currParticipation);
     logger.info("> Participation", {
-      slot: `${state.slot}/${computeEpochAtSlot(bn.config, state.slot)}`,
+      slot: `${state.slot}/${computeEpochAtSlot(state.slot)}`,
       prev: prevParticipation,
       curr: currParticipation,
     });
@@ -57,11 +66,11 @@ export function simTestInfoTracker(bn: BeaconNode, logger: ILogger): () => void 
     if (checkpoint.epoch <= lastSeenEpoch) return;
     lastSeenEpoch = checkpoint.epoch;
 
-    // Recover the pre-epoch transition state
-    const checkpointState = await bn.chain.regen.getCheckpointState(checkpoint);
-    const lastSlot = computeStartSlotAtEpoch(bn.config, checkpoint.epoch) - 1;
-    const lastStateRoot = checkpointState.stateRoots[lastSlot % bn.config.params.SLOTS_PER_HISTORICAL_ROOT];
-    const lastState = await bn.chain.regen.getState(lastStateRoot);
+    // Recover the pre-epoch transition state, use any random caller for regen
+    const checkpointState = await bn.chain.regen.getCheckpointState(checkpoint, RegenCaller.onForkChoiceFinalized);
+    const lastSlot = computeStartSlotAtEpoch(checkpoint.epoch) - 1;
+    const lastStateRoot = checkpointState.stateRoots.get(lastSlot % SLOTS_PER_HISTORICAL_ROOT);
+    const lastState = await bn.chain.regen.getState(toHexString(lastStateRoot), RegenCaller.onForkChoiceFinalized);
     logParticipation(lastState);
   }
 
@@ -80,14 +89,14 @@ export function simTestInfoTracker(bn: BeaconNode, logger: ILogger): () => void 
   };
 }
 
-function sumAttestationBits(block: BeaconBlock): number {
+function sumAttestationBits(block: allForks.BeaconBlock): number {
   return Array.from(block.body.attestations).reduce(
-    (total, att) => total + Array.from(att.aggregationBits).filter(Boolean).length,
+    (total, att) => total + att.aggregationBits.getTrueBitIndexes().length,
     0
   );
 }
 
-function avgInclusionDelay(block: BeaconBlock): number {
+function avgInclusionDelay(block: allForks.BeaconBlock): number {
   const inclDelay = Array.from(block.body.attestations).map((att) => block.slot - att.data.slot);
   return avg(inclDelay);
 }
@@ -101,9 +110,9 @@ function avg(arr: number[]): number {
  */
 function printEpochSlotGrid<T>(map: Map<Slot, T>, config: IBeaconConfig, title: string): void {
   const lastSlot = Array.from(map.keys())[map.size - 1];
-  const lastEpoch = computeEpochAtSlot(config, lastSlot);
+  const lastEpoch = computeEpochAtSlot(lastSlot);
   const rowsByEpochBySlot = linspace(0, lastEpoch).map((epoch) => {
-    const slots = linspace(epoch * config.params.SLOTS_PER_EPOCH, (epoch + 1) * config.params.SLOTS_PER_EPOCH - 1);
+    const slots = linspace(epoch * SLOTS_PER_EPOCH, (epoch + 1) * SLOTS_PER_EPOCH - 1);
     return slots.map((slot) => formatValue(map.get(slot)));
   });
   console.log(renderTitle(title));

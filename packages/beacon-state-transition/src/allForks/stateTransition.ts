@@ -1,93 +1,114 @@
 /* eslint-disable import/namespace */
-import {ForkName} from "@chainsafe/lodestar-config";
-import {allForks, Slot} from "@chainsafe/lodestar-types";
-import * as phase0 from "../phase0";
-import * as altair from "../altair";
-import {IBeaconStateTransitionMetrics} from "../metrics";
-import {verifyProposerSignature} from "./signatureSets";
-import {CachedBeaconState} from "./util";
+import {allForks, Slot, ssz} from "@chainsafe/lodestar-types";
+import {ForkName, SLOTS_PER_EPOCH} from "@chainsafe/lodestar-params";
+import {toHexString} from "@chainsafe/ssz";
+import * as phase0 from "../phase0/index.js";
+import * as altair from "../altair/index.js";
+import * as bellatrix from "../bellatrix/index.js";
+import {IBeaconStateTransitionMetrics} from "../metrics.js";
+import {EpochProcess, beforeProcessEpoch} from "../cache/epochProcess.js";
+import {CachedBeaconStateAllForks, CachedBeaconStatePhase0, CachedBeaconStateAltair} from "../types.js";
+import {computeEpochAtSlot} from "../util/index.js";
+import {verifyProposerSignature} from "./signatureSets/index.js";
+import {processSlot} from "./slot/index.js";
 
-type StateTransitionFunctions = {
-  processSlots(
-    state: CachedBeaconState<allForks.BeaconState>,
-    slot: Slot,
-    metrics?: IBeaconStateTransitionMetrics | null
-  ): CachedBeaconState<allForks.BeaconState>;
-  upgradeState(state: CachedBeaconState<allForks.BeaconState>): CachedBeaconState<allForks.BeaconState>;
+type StateAllForks = CachedBeaconStateAllForks;
+type StatePhase0 = CachedBeaconStatePhase0;
+type StateAltair = CachedBeaconStateAltair;
+
+type ProcessBlockFn = (state: StateAllForks, block: allForks.BeaconBlock, verifySignatures: boolean) => void;
+type ProcessEpochFn = (state: StateAllForks, epochProcess: EpochProcess) => void;
+type UpgradeStateFn = (state: StateAllForks) => StateAllForks;
+
+const processBlockByFork: Record<ForkName, ProcessBlockFn> = {
+  [ForkName.phase0]: phase0.processBlock as ProcessBlockFn,
+  [ForkName.altair]: altair.processBlock as ProcessBlockFn,
+  [ForkName.bellatrix]: bellatrix.processBlock as ProcessBlockFn,
 };
 
-/**
- * Record of fork to state transition functions
- */
-const implementations: Record<ForkName, StateTransitionFunctions> = {
-  [ForkName.phase0]: (phase0 as unknown) as StateTransitionFunctions,
-  [ForkName.altair]: (altair as unknown) as StateTransitionFunctions,
+const processEpochByFork: Record<ForkName, ProcessEpochFn> = {
+  [ForkName.phase0]: phase0.processEpoch as ProcessEpochFn,
+  [ForkName.altair]: altair.processEpoch as ProcessEpochFn,
+  [ForkName.bellatrix]: altair.processEpoch as ProcessEpochFn,
 };
 
+export const upgradeStateByFork: Record<Exclude<ForkName, ForkName.phase0>, UpgradeStateFn> = {
+  [ForkName.altair]: altair.upgradeState as UpgradeStateFn,
+  [ForkName.bellatrix]: bellatrix.upgradeState as UpgradeStateFn,
+};
 // Multifork capable state transition
 
 /**
  * Implementation Note: follows the optimizations in protolambda's eth2fastspec (https://github.com/protolambda/eth2fastspec)
  */
 export function stateTransition(
-  state: CachedBeaconState<allForks.BeaconState>,
+  state: CachedBeaconStateAllForks,
   signedBlock: allForks.SignedBeaconBlock,
   options?: {verifyStateRoot?: boolean; verifyProposer?: boolean; verifySignatures?: boolean},
   metrics?: IBeaconStateTransitionMetrics | null
-): CachedBeaconState<allForks.BeaconState> {
-  const {verifyStateRoot = true, verifyProposer = true, verifySignatures = true} = options || {};
-  const {config} = state;
+): CachedBeaconStateAllForks {
+  const {verifyStateRoot = true, verifyProposer = true} = options || {};
 
   const block = signedBlock.message;
   const blockSlot = block.slot;
-  const blockFork = config.getForkName(blockSlot);
+
   let postState = state.clone();
 
-  postState.setStateCachesAsTransient();
+  // State is already a ViewDU, which won't commit changes. Equivalent to .setStateCachesAsTransient()
+  // postState.setStateCachesAsTransient();
 
-  // process slots (including those with no blocks) since block
-  // includes state upgrades
-  postState = _processSlots(postState, blockSlot, metrics);
+  // Process slots (including those with no blocks) since block.
+  // Includes state upgrades
+  postState = processSlotsWithTransientCache(postState, blockSlot, metrics);
 
-  // verify signature
+  // Verify proposer signature only
   if (verifyProposer) {
     if (!verifyProposerSignature(postState, signedBlock)) {
       throw new Error("Invalid block signature");
     }
   }
 
-  // process block
+  // Process block
+  processBlock(postState, block, options, metrics);
 
-  switch (blockFork) {
-    case ForkName.phase0:
-      phase0.processBlock(
-        postState as CachedBeaconState<phase0.BeaconState>,
-        block as phase0.BeaconBlock,
-        verifySignatures,
-        metrics
-      );
-      break;
-    case ForkName.altair:
-      altair.processBlock(
-        postState as CachedBeaconState<altair.BeaconState>,
-        block as altair.BeaconBlock,
-        verifySignatures
-      );
-      break;
-    default:
-      throw new Error(`Block processing not implemented for fork ${blockFork}`);
-  }
+  // Apply changes to state, must do before hashing. Note: .hashTreeRoot() automatically commits() too
+  postState.commit();
 
-  // verify state root
+  // Verify state root
   if (verifyStateRoot) {
-    if (!config.types.Root.equals(block.stateRoot, postState.tree.root)) {
-      throw new Error("Invalid state root");
+    const stateRoot = postState.hashTreeRoot();
+    if (!ssz.Root.equals(block.stateRoot, stateRoot)) {
+      throw new Error(
+        `Invalid state root at slot ${block.slot}, expected=${toHexString(block.stateRoot)}, actual=${toHexString(
+          stateRoot
+        )}`
+      );
     }
   }
 
-  postState.setStateCachesAsPersistent();
-
   return postState;
+}
+
+/**
+ * Multifork capable processBlock()
+ *
+ * Implementation Note: follows the optimizations in protolambda's eth2fastspec (https://github.com/protolambda/eth2fastspec)
+ */
+export function processBlock(
+  postState: CachedBeaconStateAllForks,
+  block: allForks.BeaconBlock,
+  options?: {verifySignatures?: boolean},
+  metrics?: IBeaconStateTransitionMetrics | null
+): void {
+  const {verifySignatures = true} = options || {};
+  const fork = postState.config.getForkName(block.slot);
+
+  const timer = metrics?.stfnProcessBlock.startTimer();
+  try {
+    processBlockByFork[fork](postState, block, verifySignatures);
+  } finally {
+    if (timer) timer();
+  }
 }
 
 /**
@@ -96,66 +117,68 @@ export function stateTransition(
  * Implementation Note: follows the optimizations in protolambda's eth2fastspec (https://github.com/protolambda/eth2fastspec)
  */
 export function processSlots(
-  state: CachedBeaconState<allForks.BeaconState>,
+  state: CachedBeaconStateAllForks,
   slot: Slot,
   metrics?: IBeaconStateTransitionMetrics | null
-): CachedBeaconState<allForks.BeaconState> {
+): CachedBeaconStateAllForks {
   let postState = state.clone();
 
-  postState.setStateCachesAsTransient();
+  // State is already a ViewDU, which won't commit changes. Equivalent to .setStateCachesAsTransient()
+  // postState.setStateCachesAsTransient();
 
-  postState = _processSlots(postState, slot, metrics);
+  postState = processSlotsWithTransientCache(postState, slot, metrics);
 
-  postState.setStateCachesAsPersistent();
+  // Apply changes to state, must do before hashing
+  postState.commit();
 
   return postState;
 }
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
-function _processSlots(
-  state: CachedBeaconState<allForks.BeaconState>,
+/**
+ * All processSlot() logic but separate so stateTransition() can recycle the caches
+ */
+function processSlotsWithTransientCache(
+  postState: StateAllForks,
   slot: Slot,
   metrics?: IBeaconStateTransitionMetrics | null
-): CachedBeaconState<allForks.BeaconState> {
-  let postState = state;
-  const {config} = state;
-  const preSlot = state.slot;
-
-  // forks sorted in order
-  const forkInfos = Object.values(config.forks);
-  // for each fork
-  for (let i = 0; i < forkInfos.length; i++) {
-    const currentForkInfo = forkInfos[i];
-    const nextForkInfo = forkInfos[i + 1];
-
-    const impl = implementations[currentForkInfo.name];
-    if (!impl) {
-      throw new Error(`Slot processing not implemented for fork ${currentForkInfo.name}`);
-    }
-    // if there's no next fork, process slots without worrying about fork upgrades and exit
-    if (!nextForkInfo) {
-      impl.processSlots(postState, slot);
-      break;
-    }
-    const nextForkStartSlot = config.params.SLOTS_PER_EPOCH * nextForkInfo.epoch;
-
-    // if the starting state slot is after the current fork, skip to the next fork
-    if (preSlot > nextForkStartSlot) {
-      continue;
-    }
-    // if the requested slot is not after the next fork, process slots and exit
-    if (slot < nextForkStartSlot) {
-      impl.processSlots(postState, slot, metrics);
-      break;
-    }
-    const nextImpl = implementations[currentForkInfo.name];
-    if (!nextImpl) {
-      throw new Error(`Slot processing not implemented for fork ${nextForkInfo.name}`);
-    }
-    // else (the requested slot is equal or after the next fork), process up to the fork
-    impl.processSlots(postState, nextForkStartSlot);
-
-    postState = nextImpl.upgradeState(postState);
+): StateAllForks {
+  const {config} = postState;
+  if (postState.slot > slot) {
+    throw Error(`Too old slot ${slot}, current=${postState.slot}`);
   }
+
+  while (postState.slot < slot) {
+    processSlot(postState);
+
+    // Process epoch on the first slot of the next epoch
+    if ((postState.slot + 1) % SLOTS_PER_EPOCH === 0) {
+      // At fork boundary we don't want to process "next fork" epoch before upgrading state
+      const fork = postState.config.getForkName(postState.slot);
+      const timer = metrics?.stfnEpochTransition.startTimer();
+      try {
+        const epochProcess = beforeProcessEpoch(postState);
+        processEpochByFork[fork](postState, epochProcess);
+        const {currentEpoch, statuses, balances} = epochProcess;
+        metrics?.registerValidatorStatuses(currentEpoch, statuses, balances);
+
+        postState.slot++;
+        postState.epochCtx.afterProcessEpoch(postState, epochProcess);
+      } finally {
+        if (timer) timer();
+      }
+
+      // Upgrade state if exactly at epoch boundary
+      const stateSlot = computeEpochAtSlot(postState.slot);
+      if (stateSlot === config.ALTAIR_FORK_EPOCH) {
+        postState = altair.upgradeState(postState as StatePhase0) as StateAllForks;
+      }
+      if (stateSlot === config.BELLATRIX_FORK_EPOCH) {
+        postState = bellatrix.upgradeState(postState as StateAltair) as StateAllForks;
+      }
+    } else {
+      postState.slot++;
+    }
+  }
+
   return postState;
 }

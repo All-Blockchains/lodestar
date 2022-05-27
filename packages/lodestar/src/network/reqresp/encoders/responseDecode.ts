@@ -1,18 +1,17 @@
-import {ForkName, IBeaconConfig} from "@chainsafe/lodestar-config";
-import {RespStatus} from "../../../constants";
-import {IForkDigestContext} from "../../../util/forkDigestContext";
-import {BufferedSource, decodeErrorMessage} from "../utils";
-import {readEncodedPayload} from "../encodingStrategies";
-import {ResponseError} from "../response";
+import {ForkName} from "@chainsafe/lodestar-params";
+import {IForkDigestContext} from "@chainsafe/lodestar-config";
+import {RespStatus} from "../../../constants/index.js";
+import {BufferedSource, decodeErrorMessage} from "../utils/index.js";
+import {readEncodedPayload} from "../encodingStrategies/index.js";
+import {ResponseError} from "../response/index.js";
 import {
   Protocol,
-  ResponseBody,
+  IncomingResponseBody,
   ContextBytesType,
-  deserializeToTreeByMethod,
   contextBytesTypeByProtocol,
   getResponseSzzTypeByMethod,
   CONTEXT_BYTES_FORK_DIGEST_LENGTH,
-} from "../types";
+} from "../types.js";
 
 /**
  * Internal helper type to signal stream ended early
@@ -30,12 +29,10 @@ enum StreamStatus {
  * ```
  */
 export function responseDecode(
-  config: IBeaconConfig,
   forkDigestContext: IForkDigestContext,
   protocol: Protocol
-): (source: AsyncIterable<Buffer>) => AsyncGenerator<ResponseBody> {
-  return async function* (source) {
-    const deserializeToTree = deserializeToTreeByMethod[protocol.method];
+): (source: AsyncIterable<Buffer>) => AsyncGenerator<IncomingResponseBody> {
+  return async function* responseDecodeSink(source) {
     const contextBytesType = contextBytesTypeByProtocol(protocol);
     const bufferedSource = new BufferedSource(source as AsyncGenerator<Buffer>);
 
@@ -57,9 +54,9 @@ export function responseDecode(
       }
 
       const forkName = await readForkName(forkDigestContext, bufferedSource, contextBytesType);
-      const type = getResponseSzzTypeByMethod(config, protocol.method, forkName);
+      const type = getResponseSzzTypeByMethod(protocol, forkName);
 
-      yield await readEncodedPayload(bufferedSource, protocol.encoding, type, {deserializeToTree});
+      yield await readEncodedPayload(bufferedSource, protocol.encoding, type);
     }
   };
 }

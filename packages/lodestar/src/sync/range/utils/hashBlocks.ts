@@ -1,12 +1,14 @@
-import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {phase0} from "@chainsafe/lodestar-types";
-import {byteArrayConcat} from "../../../util/bytes";
+import {allForks} from "@chainsafe/lodestar-types";
+import {IChainForkConfig} from "@chainsafe/lodestar-config";
+import {byteArrayConcat} from "../../../util/bytes.js";
 
 /**
  * Hash SignedBeaconBlock in a byte form easy to compare only
  * @param blocks
  * @param config
  */
-export function hashBlocks(blocks: phase0.SignedBeaconBlock[], config: IBeaconConfig): Uint8Array {
-  return byteArrayConcat(blocks.map((block) => config.types.phase0.SignedBeaconBlock.hashTreeRoot(block)));
+export function hashBlocks(blocks: allForks.SignedBeaconBlock[], config: IChainForkConfig): Uint8Array {
+  return byteArrayConcat(
+    blocks.map((block) => config.getForkTypes(block.message.slot).SignedBeaconBlock.hashTreeRoot(block))
+  );
 }

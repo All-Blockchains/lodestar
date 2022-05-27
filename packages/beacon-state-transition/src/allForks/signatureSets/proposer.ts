@@ -1,10 +1,11 @@
+import {DOMAIN_BEACON_PROPOSER} from "@chainsafe/lodestar-params";
 import {allForks} from "@chainsafe/lodestar-types";
-import {computeSigningRoot, getDomain} from "../../util";
-import {ISignatureSet, SignatureSetType, verifySignatureSet} from "../../util/signatureSets";
-import {CachedBeaconState} from "../util";
+import {computeSigningRoot} from "../../util/index.js";
+import {ISignatureSet, SignatureSetType, verifySignatureSet} from "../../util/signatureSets.js";
+import {CachedBeaconStateAllForks} from "../../types.js";
 
 export function verifyProposerSignature(
-  state: CachedBeaconState<allForks.BeaconState>,
+  state: CachedBeaconStateAllForks,
   signedBlock: allForks.SignedBeaconBlock
 ): boolean {
   const signatureSet = getProposerSignatureSet(state, signedBlock);
@@ -12,21 +13,20 @@ export function verifyProposerSignature(
 }
 
 export function getProposerSignatureSet(
-  state: CachedBeaconState<allForks.BeaconState>,
+  state: CachedBeaconStateAllForks,
   signedBlock: allForks.SignedBeaconBlock
 ): ISignatureSet {
   const {config, epochCtx} = state;
-  const domain = getDomain(config, state, config.params.DOMAIN_BEACON_PROPOSER);
+  const domain = state.config.getDomain(DOMAIN_BEACON_PROPOSER, signedBlock.message.slot);
 
   return {
     type: SignatureSetType.single,
     pubkey: epochCtx.index2pubkey[signedBlock.message.proposerIndex],
     signingRoot: computeSigningRoot(
-      config,
-      config.getTypes(signedBlock.message.slot).BeaconBlock,
+      config.getForkTypes(signedBlock.message.slot).BeaconBlock,
       signedBlock.message,
       domain
     ),
-    signature: signedBlock.signature.valueOf() as Uint8Array,
+    signature: signedBlock.signature,
   };
 }

@@ -1,13 +1,16 @@
 import LibP2p from "libp2p";
 import PeerId from "peer-id";
+import {ForkName} from "@chainsafe/lodestar-params";
 import {IBeaconConfig} from "@chainsafe/lodestar-config";
 import {allForks, phase0} from "@chainsafe/lodestar-types";
 import {ILogger} from "@chainsafe/lodestar-utils";
-import {IForkDigestContext} from "../../util/forkDigestContext";
-import {IPeerMetadataStore, IPeerRpcScoreStore} from "../peers";
-import {MetadataController} from "../metadata";
-import {INetworkEventBus} from "../events";
-import {IReqRespHandler} from "./handlers";
+import {IPeerRpcScoreStore} from "../peers/index.js";
+import {MetadataController} from "../metadata.js";
+import {INetworkEventBus} from "../events.js";
+import {PeersData} from "../peers/peersData.js";
+import {IMetrics} from "../../metrics/index.js";
+import {ReqRespHandlers} from "./handlers/index.js";
+import {RequestTypedContainer} from "./types.js";
 
 export interface IReqResp {
   start(): void;
@@ -15,24 +18,25 @@ export interface IReqResp {
   status(peerId: PeerId, request: phase0.Status): Promise<phase0.Status>;
   goodbye(peerId: PeerId, request: phase0.Goodbye): Promise<void>;
   ping(peerId: PeerId): Promise<phase0.Ping>;
-  metadata(peerId: PeerId): Promise<phase0.Metadata>;
+  metadata(peerId: PeerId, fork?: ForkName): Promise<allForks.Metadata>;
   beaconBlocksByRange(
     peerId: PeerId,
     request: phase0.BeaconBlocksByRangeRequest
   ): Promise<allForks.SignedBeaconBlock[]>;
   beaconBlocksByRoot(peerId: PeerId, request: phase0.BeaconBlocksByRootRequest): Promise<allForks.SignedBeaconBlock[]>;
+  pruneOnPeerDisconnect(peerId: PeerId): void;
 }
 
 export interface IReqRespModules {
   config: IBeaconConfig;
   libp2p: LibP2p;
+  peersData: PeersData;
   logger: ILogger;
-  forkDigestContext: IForkDigestContext;
   metadata: MetadataController;
-  reqRespHandler: IReqRespHandler;
-  peerMetadata: IPeerMetadataStore;
+  reqRespHandlers: ReqRespHandlers;
   peerRpcScores: IPeerRpcScoreStore;
   networkEventBus: INetworkEventBus;
+  metrics: IMetrics | null;
 }
 
 export type Libp2pConnection = {
@@ -68,3 +72,20 @@ export type Libp2pStream = {
    */
   abort: (err: Error) => void;
 };
+
+/**
+ * Rate limiter interface for inbound and outbound requests.
+ */
+export interface IRateLimiter {
+  /**
+   * Allow to request or response based on rate limit params configured.
+   */
+  allowRequest(peerId: PeerId, requestTyped: RequestTypedContainer): boolean;
+
+  /**
+   * Prune by peer id
+   */
+  prune(peerId: PeerId): void;
+  start(): void;
+  stop(): void;
+}

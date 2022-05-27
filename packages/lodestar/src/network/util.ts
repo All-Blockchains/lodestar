@@ -3,13 +3,10 @@
  * @module network
  */
 
+import {networkInterfaces} from "node:os";
 import PeerId from "peer-id";
-import Multiaddr from "multiaddr";
-import {networkInterfaces} from "os";
+import {Multiaddr} from "multiaddr";
 import {ENR} from "@chainsafe/discv5";
-import MetadataBook from "libp2p/src/peer-store/metadata-book";
-import {IBeaconConfig, IForkInfo} from "@chainsafe/lodestar-config";
-import {Epoch} from "@chainsafe/lodestar-types";
 
 // peers
 
@@ -36,6 +33,10 @@ export function isLocalMultiAddr(multiaddr: Multiaddr | undefined): boolean {
   const isIPv4: boolean = tuples[0][0] === 4;
   const family = isIPv4 ? "IPv4" : "IPv6";
   const ip = tuples[0][1];
+
+  if (!ip) {
+    return false;
+  }
 
   const ipStr = isIPv4
     ? Array.from(ip).join(".")
@@ -65,27 +66,4 @@ export function clearMultiaddrUDP(enr: ENR): void {
 export function prettyPrintPeerId(peerId: PeerId): string {
   const id = peerId.toB58String();
   return `${id.substr(0, 2)}...${id.substr(id.length - 6, id.length)}`;
-}
-
-export function getAgentVersionFromPeerStore(peerId: PeerId, metadataBook: MetadataBook): string {
-  return new TextDecoder().decode(metadataBook.getValue(peerId, "AgentVersion")) || "N/A";
-}
-
-export function getCurrentAndNextFork(
-  config: IBeaconConfig,
-  epoch: Epoch
-): {currentFork: IForkInfo; nextFork: IForkInfo | undefined} {
-  // NOTE: forks are sorted by ascending epoch, phase0 first
-  const forks = Object.values(config.forks);
-  let currentForkIdx = -1;
-  // findLastIndex
-  for (let i = 0; i < forks.length; i++) {
-    if (epoch >= forks[i].epoch) currentForkIdx = i;
-  }
-  const nextForkIdx = currentForkIdx + 1;
-  const hasNextFork = forks[nextForkIdx] && forks[nextForkIdx].epoch !== Infinity;
-  return {
-    currentFork: forks[currentForkIdx] || forks[0],
-    nextFork: hasNextFork ? forks[nextForkIdx] : undefined,
-  };
 }

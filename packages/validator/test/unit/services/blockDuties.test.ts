@@ -1,31 +1,33 @@
-import {AbortController} from "abort-controller";
 import {expect} from "chai";
 import sinon from "sinon";
+import {AbortController} from "@chainsafe/abort-controller";
 import bls from "@chainsafe/bls";
-import {config} from "@chainsafe/lodestar-config/mainnet";
-import {phase0, Root} from "@chainsafe/lodestar-types";
-import {BlockDutiesService} from "../../../src/services/blockDuties";
-import {ValidatorStore} from "../../../src/services/validatorStore";
-import {ApiClientStub} from "../../utils/apiStub";
-import {testLogger} from "../../utils/logger";
-import {ClockMock} from "../../utils/clock";
+import {toHexString} from "@chainsafe/ssz";
+import {Root} from "@chainsafe/lodestar-types";
+import {routes} from "@chainsafe/lodestar-api";
+import {BlockDutiesService} from "../../../src/services/blockDuties.js";
+import {ValidatorStore} from "../../../src/services/validatorStore.js";
+import {getApiClientStub} from "../../utils/apiStub.js";
+import {loggerVc} from "../../utils/logger.js";
+import {ClockMock} from "../../utils/clock.js";
 
-type ProposerDutiesRes = {dependentRoot: Root; data: phase0.ProposerDuty[]};
+type ProposerDutiesRes = {dependentRoot: Root; data: routes.validator.ProposerDuty[]};
 
 describe("BlockDutiesService", function () {
   const sandbox = sinon.createSandbox();
-  const logger = testLogger();
   const ZERO_HASH = Buffer.alloc(32, 0);
 
-  const apiClient = ApiClientStub(sandbox);
+  const api = getApiClientStub(sandbox);
   const validatorStore = sinon.createStubInstance(ValidatorStore) as ValidatorStore &
     sinon.SinonStubbedInstance<ValidatorStore>;
   let pubkeys: Uint8Array[]; // Initialize pubkeys in before() so bls is already initialized
 
   before(() => {
-    const secretKeys = Array.from({length: 2}, (_, i) => bls.SecretKey.fromBytes(Buffer.alloc(32, i + 1)));
+    const secretKeys = Array.from({length: 3}, (_, i) => bls.SecretKey.fromBytes(Buffer.alloc(32, i + 1)));
     pubkeys = secretKeys.map((sk) => sk.toPublicKey().toBytes());
-    validatorStore.votingPubkeys.returns(pubkeys);
+    validatorStore.votingPubkeys.returns(pubkeys.map(toHexString));
+    validatorStore.hasVotingPubkey.returns(true);
+    validatorStore.hasSomeValidators.returns(true);
   });
 
   let controller: AbortController; // To stop clock
@@ -39,19 +41,12 @@ describe("BlockDutiesService", function () {
       dependentRoot: ZERO_HASH,
       data: [{slot: slot, validatorIndex: 0, pubkey: pubkeys[0]}],
     };
-    apiClient.validator.getProposerDuties.resolves(duties);
+    api.validator.getProposerDuties.resolves(duties);
 
     const notifyBlockProductionFn = sinon.stub(); // Returns void
 
     const clock = new ClockMock();
-    const dutiesService = new BlockDutiesService(
-      config,
-      logger,
-      apiClient,
-      clock,
-      validatorStore,
-      notifyBlockProductionFn
-    );
+    const dutiesService = new BlockDutiesService(loggerVc, api, clock, validatorStore, null, notifyBlockProductionFn);
 
     // Trigger clock onSlot for slot 0
     await clock.tickSlotFns(0, controller.signal);
@@ -86,21 +81,14 @@ describe("BlockDutiesService", function () {
 
     // Clock will call runAttesterDutiesTasks() immediatelly
     const clock = new ClockMock();
-    const dutiesService = new BlockDutiesService(
-      config,
-      logger,
-      apiClient,
-      clock,
-      validatorStore,
-      notifyBlockProductionFn
-    );
+    const dutiesService = new BlockDutiesService(loggerVc, api, clock, validatorStore, null, notifyBlockProductionFn);
 
     // Trigger clock onSlot for slot 0
-    apiClient.validator.getProposerDuties.resolves(dutiesBeforeReorg);
+    api.validator.getProposerDuties.resolves(dutiesBeforeReorg);
     await clock.tickSlotFns(0, controller.signal);
 
     // Trigger clock onSlot for slot 1 - Return different duties for slot 1
-    apiClient.validator.getProposerDuties.resolves(dutiesAfterReorg);
+    api.validator.getProposerDuties.resolves(dutiesAfterReorg);
     await clock.tickSlotFns(1, controller.signal);
 
     // Should persist the dutiesAfterReorg
@@ -121,6 +109,52 @@ describe("BlockDutiesService", function () {
     expect(notifyBlockProductionFn.getCall(1).args).to.deep.equal(
       [1, [pubkeys[1]]],
       "Second call to notifyBlockProductionFn() after the re-org with pubkey[1]"
+    );
+  });
+
+  it("Should remove signer from duty", async function () {
+    // Reply with some duties
+    const slot = 0; // genesisTime is right now, so test with slot = currentSlot
+    const duties: ProposerDutiesRes = {
+      dependentRoot: ZERO_HASH,
+      data: [
+        {slot: slot, validatorIndex: 0, pubkey: pubkeys[0]},
+        {slot: slot, validatorIndex: 1, pubkey: pubkeys[1]},
+        {slot: 33, validatorIndex: 2, pubkey: pubkeys[2]},
+      ],
+    };
+
+    const dutiesRemoved: ProposerDutiesRes = {
+      dependentRoot: ZERO_HASH,
+      data: [
+        {slot: slot, validatorIndex: 1, pubkey: pubkeys[1]},
+        {slot: 33, validatorIndex: 2, pubkey: pubkeys[2]},
+      ],
+    };
+    api.validator.getProposerDuties.resolves(duties);
+
+    const notifyBlockProductionFn = sinon.stub(); // Returns void
+
+    const clock = new ClockMock();
+    const dutiesService = new BlockDutiesService(loggerVc, api, clock, validatorStore, null, notifyBlockProductionFn);
+
+    // Trigger clock onSlot for slot 0
+    await clock.tickSlotFns(0, controller.signal);
+    await clock.tickSlotFns(32, controller.signal);
+
+    // first confirm the duties for the epochs was persisted
+    expect(Object.fromEntries(dutiesService["proposers"])).to.deep.equal(
+      {0: duties, 1: duties},
+      "Wrong dutiesService.proposers Map"
+    );
+
+    // then remove a signers public key
+    dutiesService.removeDutiesForKey(toHexString(pubkeys[0]));
+
+    // confirm that the duties no longer contain the signers public key
+    expect(Object.fromEntries(dutiesService["proposers"])).to.deep.equal(
+      {0: dutiesRemoved, 1: dutiesRemoved},
+      "Wrong dutiesService.proposers Map"
     );
   });
 });

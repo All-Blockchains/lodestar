@@ -1,673 +1,524 @@
 import {
-  IPhase0Params,
+  BitListType,
+  BitVectorType,
+  ContainerType,
+  ContainerNodeStructType,
+  ListBasicType,
+  ListCompositeType,
+  VectorBasicType,
+  VectorCompositeType,
+} from "@chainsafe/ssz";
+import {
   ATTESTATION_SUBNET_COUNT,
   DEPOSIT_CONTRACT_TREE_DEPTH,
+  EPOCHS_PER_ETH1_VOTING_PERIOD,
+  EPOCHS_PER_HISTORICAL_VECTOR,
+  EPOCHS_PER_SLASHINGS_VECTOR,
+  HISTORICAL_ROOTS_LIMIT,
   JUSTIFICATION_BITS_LENGTH,
+  MAX_ATTESTATIONS,
+  MAX_ATTESTER_SLASHINGS,
+  MAX_DEPOSITS,
+  MAX_PROPOSER_SLASHINGS,
   MAX_REQUEST_BLOCKS,
+  MAX_VALIDATORS_PER_COMMITTEE,
+  MAX_VOLUNTARY_EXITS,
+  SLOTS_PER_EPOCH,
+  SLOTS_PER_HISTORICAL_ROOT,
+  VALIDATOR_REGISTRY_LIMIT,
 } from "@chainsafe/lodestar-params";
-import {BitListType, BitVectorType, ContainerType, List, ListType, RootType, Vector, VectorType} from "@chainsafe/ssz";
-import {PrimitiveSSZTypes} from "../primitive";
-import {StringType} from "../utils/StringType";
-import {LazyVariable} from "../utils/lazyVar";
-import {ValidatorStatus} from "./types";
-import * as phase0 from "./types";
-
-// Interface is defined in the return of getPhase0Types(), to de-duplicate info
-// To add a new type, create and return it in the body of getPhase0Types()
-export type Phase0SSZTypes = ReturnType<typeof getPhase0Types>;
-
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types,@typescript-eslint/explicit-function-return-type
-export function getPhase0Types(params: IPhase0Params, primitive: PrimitiveSSZTypes) {
-  const {
-    BLSSignature,
-    BLSPubkey,
-    Version,
-    Slot,
-    Uint64,
-    Root,
-    Gwei,
-    Boolean,
-    Number64,
-    Epoch,
-    ForkDigest,
-    CommitteeIndex,
-    ValidatorIndex,
-    Bytes32,
-    Domain,
-  } = primitive;
-
-  // So the expandedRoots can be referenced, and break the circular dependency
-  const typesRef = new LazyVariable<{
-    BeaconBlock: ContainerType<phase0.BeaconBlock>;
-    BeaconState: ContainerType<phase0.BeaconState>;
-  }>();
-
-  // Misc types
-  // ==========
-
-  const AttestationSubnets = new BitVectorType({
-    length: ATTESTATION_SUBNET_COUNT,
-  });
-
-  const BeaconBlockHeader = new ContainerType<phase0.BeaconBlockHeader>({
-    fields: {
-      slot: Slot,
-      proposerIndex: ValidatorIndex,
-      parentRoot: Root,
-      stateRoot: Root,
-      bodyRoot: Root,
-    },
-  });
-
-  const SignedBeaconBlockHeader = new ContainerType<phase0.SignedBeaconBlockHeader>({
-    fields: {
-      message: BeaconBlockHeader,
-      signature: BLSSignature,
-    },
-  });
-
-  const Checkpoint = new ContainerType<phase0.Checkpoint>({
-    fields: {
-      epoch: Epoch,
-      root: Root,
-    },
-  });
-
-  const CommitteeBits = new BitListType({
-    limit: params.MAX_VALIDATORS_PER_COMMITTEE,
-  });
-
-  const CommitteeIndices = new ListType<List<phase0.ValidatorIndex>>({
-    elementType: ValidatorIndex,
-    limit: params.MAX_VALIDATORS_PER_COMMITTEE,
-  });
-
-  const DepositMessage = new ContainerType<phase0.DepositMessage>({
-    fields: {
-      pubkey: BLSPubkey,
-      withdrawalCredentials: Bytes32,
-      amount: Gwei,
-    },
-  });
-
-  const DepositData = new ContainerType<phase0.DepositData>({
-    fields: {
-      pubkey: BLSPubkey,
-      withdrawalCredentials: Bytes32,
-      amount: Gwei,
-      signature: BLSSignature,
-    },
-  });
-
-  const DepositDataRootList = new ListType<List<phase0.Root>>({
-    elementType: new RootType({expandedType: DepositData}),
-    limit: 2 ** DEPOSIT_CONTRACT_TREE_DEPTH,
-  });
-
-  const DepositEvent = new ContainerType<phase0.DepositEvent>({
-    fields: {
-      depositData: DepositData,
-      blockNumber: Number64,
-      index: Number64,
-    },
-  });
-
-  const Eth1Data = new ContainerType<phase0.Eth1Data>({
-    fields: {
-      depositRoot: Root,
-      depositCount: Number64,
-      blockHash: Bytes32,
-    },
-  });
-
-  const Eth1DataOrdered = new ContainerType<phase0.Eth1DataOrdered>({
-    fields: {
-      depositRoot: Root,
-      depositCount: Number64,
-      blockHash: Bytes32,
-      blockNumber: Number64,
-    },
-  });
-
-  const Fork = new ContainerType<phase0.Fork>({
-    fields: {
-      previousVersion: Version,
-      currentVersion: Version,
-      epoch: Epoch,
-    },
-  });
-
-  const ForkData = new ContainerType<phase0.ForkData>({
-    fields: {
-      currentVersion: Version,
-      genesisValidatorsRoot: Root,
-    },
-  });
-
-  const ENRForkID = new ContainerType<phase0.ENRForkID>({
-    fields: {
-      forkDigest: ForkDigest,
-      nextForkVersion: Version,
-      nextForkEpoch: Epoch,
-    },
-  });
-
-  const HistoricalBlockRoots = new VectorType<Vector<phase0.Root>>({
-    elementType: new RootType({expandedType: () => typesRef.get().BeaconBlock}),
-    length: params.SLOTS_PER_HISTORICAL_ROOT,
-  });
-
-  const HistoricalStateRoots = new VectorType<Vector<phase0.Root>>({
-    elementType: new RootType({expandedType: () => typesRef.get().BeaconState}),
-    length: params.SLOTS_PER_HISTORICAL_ROOT,
-  });
-
-  const HistoricalBatch = new ContainerType<phase0.HistoricalBatch>({
-    fields: {
-      blockRoots: HistoricalBlockRoots,
-      stateRoots: HistoricalStateRoots,
-    },
-  });
-
-  const SlotRoot = new ContainerType<phase0.SlotRoot>({
-    fields: {
-      slot: Slot,
-      root: Root,
-    },
-  });
-
-  const Validator = new ContainerType<phase0.Validator>({
-    fields: {
-      pubkey: BLSPubkey,
-      withdrawalCredentials: Bytes32,
-      effectiveBalance: Gwei,
-      slashed: Boolean,
-      activationEligibilityEpoch: Epoch,
-      activationEpoch: Epoch,
-      exitEpoch: Epoch,
-      withdrawableEpoch: Epoch,
-    },
-  });
-
-  // Misc dependants
-
-  const AttestationData = new ContainerType<phase0.AttestationData>({
-    fields: {
-      slot: Slot,
-      index: CommitteeIndex,
-      beaconBlockRoot: Root,
-      source: Checkpoint,
-      target: Checkpoint,
-    },
-  });
-
-  const IndexedAttestation = new ContainerType<phase0.IndexedAttestation>({
-    fields: {
-      attestingIndices: CommitteeIndices,
-      data: AttestationData,
-      signature: BLSSignature,
-    },
-  });
-
-  const PendingAttestation = new ContainerType<phase0.PendingAttestation>({
-    fields: {
-      aggregationBits: CommitteeBits,
-      data: AttestationData,
-      inclusionDelay: Slot,
-      proposerIndex: ValidatorIndex,
-    },
-  });
-
-  const SigningData = new ContainerType<phase0.SigningData>({
-    fields: {
-      objectRoot: Root,
-      domain: Domain,
-    },
-  });
-
-  // Operations types
-  // ================
-
-  const Attestation = new ContainerType<phase0.Attestation>({
-    fields: {
-      aggregationBits: CommitteeBits,
-      data: AttestationData,
-      signature: BLSSignature,
-    },
-  });
-
-  const AttesterSlashing = new ContainerType<phase0.AttesterSlashing>({
-    fields: {
-      attestation1: IndexedAttestation,
-      attestation2: IndexedAttestation,
-    },
-  });
-
-  const Deposit = new ContainerType<phase0.Deposit>({
-    fields: {
-      proof: new VectorType({elementType: Bytes32, length: DEPOSIT_CONTRACT_TREE_DEPTH + 1}),
-      data: DepositData,
-    },
-  });
-
-  const ProposerSlashing = new ContainerType<phase0.ProposerSlashing>({
-    fields: {
-      signedHeader1: SignedBeaconBlockHeader,
-      signedHeader2: SignedBeaconBlockHeader,
-    },
-  });
-
-  const VoluntaryExit = new ContainerType<phase0.VoluntaryExit>({
-    fields: {
-      epoch: Epoch,
-      validatorIndex: ValidatorIndex,
-    },
-  });
-
-  const SignedVoluntaryExit = new ContainerType<phase0.SignedVoluntaryExit>({
-    fields: {
-      message: VoluntaryExit,
-      signature: BLSSignature,
-    },
-  });
-
-  // Block types
-  // ===========
-
-  const BeaconBlockBody = new ContainerType<phase0.BeaconBlockBody>({
-    fields: {
-      randaoReveal: BLSSignature,
-      eth1Data: Eth1Data,
-      graffiti: Bytes32,
-      proposerSlashings: new ListType({elementType: ProposerSlashing, limit: params.MAX_PROPOSER_SLASHINGS}),
-      attesterSlashings: new ListType({elementType: AttesterSlashing, limit: params.MAX_ATTESTER_SLASHINGS}),
-      attestations: new ListType({elementType: Attestation, limit: params.MAX_ATTESTATIONS}),
-      deposits: new ListType({elementType: Deposit, limit: params.MAX_DEPOSITS}),
-      voluntaryExits: new ListType({elementType: SignedVoluntaryExit, limit: params.MAX_VOLUNTARY_EXITS}),
-    },
-  });
-
-  const BeaconBlock = new ContainerType<phase0.BeaconBlock>({
-    fields: {
-      slot: Slot,
-      proposerIndex: ValidatorIndex,
-      parentRoot: new RootType({expandedType: () => typesRef.get().BeaconBlock}),
-      stateRoot: new RootType({expandedType: () => typesRef.get().BeaconState}),
-      body: BeaconBlockBody,
-    },
-  });
-
-  const SignedBeaconBlock = new ContainerType<phase0.SignedBeaconBlock>({
-    fields: {
-      message: BeaconBlock,
-      signature: BLSSignature,
-    },
-  });
-
-  // State types
-  // ===========
-
-  const EpochAttestations = new ListType<List<phase0.PendingAttestation>>({
-    elementType: PendingAttestation,
-    limit: params.MAX_ATTESTATIONS * params.SLOTS_PER_EPOCH,
-  });
-
-  const BeaconState = new ContainerType<phase0.BeaconState>({
-    fields: {
-      // Misc
-      genesisTime: Number64,
-      genesisValidatorsRoot: Root,
-      slot: Slot,
-      fork: Fork,
-      // History
-      latestBlockHeader: BeaconBlockHeader,
-      blockRoots: HistoricalBlockRoots,
-      stateRoots: HistoricalStateRoots,
-      historicalRoots: new ListType({
-        elementType: new RootType({expandedType: HistoricalBatch}),
-        limit: params.HISTORICAL_ROOTS_LIMIT,
-      }),
-      // Eth1
-      eth1Data: Eth1Data,
-      eth1DataVotes: new ListType({
-        elementType: Eth1Data,
-        limit: params.EPOCHS_PER_ETH1_VOTING_PERIOD * params.SLOTS_PER_EPOCH,
-      }),
-      eth1DepositIndex: Number64,
-      // Registry
-      validators: new ListType({elementType: Validator, limit: params.VALIDATOR_REGISTRY_LIMIT}),
-      balances: new ListType({elementType: Gwei, limit: params.VALIDATOR_REGISTRY_LIMIT}),
-      randaoMixes: new VectorType({elementType: Bytes32, length: params.EPOCHS_PER_HISTORICAL_VECTOR}),
-      // Slashings
-      slashings: new VectorType({elementType: Gwei, length: params.EPOCHS_PER_SLASHINGS_VECTOR}),
-      // Attestations
-      previousEpochAttestations: EpochAttestations,
-      currentEpochAttestations: EpochAttestations,
-      // Finality
-      justificationBits: new BitVectorType({length: JUSTIFICATION_BITS_LENGTH}),
-      previousJustifiedCheckpoint: Checkpoint,
-      currentJustifiedCheckpoint: Checkpoint,
-      finalizedCheckpoint: Checkpoint,
-    },
-  });
-
-  // Validator types
-  // ===============
-
-  const CommitteeAssignment = new ContainerType<phase0.CommitteeAssignment>({
-    fields: {
-      validators: CommitteeIndices,
-      committeeIndex: CommitteeIndex,
-      slot: Slot,
-    },
-  });
-
-  const AggregateAndProof = new ContainerType<phase0.AggregateAndProof>({
-    fields: {
-      aggregatorIndex: ValidatorIndex,
-      aggregate: Attestation,
-      selectionProof: BLSSignature,
-    },
-  });
-
-  const SignedAggregateAndProof = new ContainerType<phase0.SignedAggregateAndProof>({
-    fields: {
-      message: AggregateAndProof,
-      signature: BLSSignature,
-    },
-  });
-
-  // ReqResp types
-  // =============
-
-  const Status = new ContainerType<phase0.Status>({
-    fields: {
-      forkDigest: ForkDigest,
-      finalizedRoot: Root,
-      finalizedEpoch: Epoch,
-      headRoot: Root,
-      headSlot: Slot,
-    },
-  });
-
-  const Goodbye = Uint64;
-
-  const Ping = Uint64;
-
-  const Metadata = new ContainerType<phase0.Metadata>({
-    fields: {
-      seqNumber: Uint64,
-      attnets: AttestationSubnets,
-    },
-  });
-
-  const BeaconBlocksByRangeRequest = new ContainerType<phase0.BeaconBlocksByRangeRequest>({
-    fields: {
-      startSlot: Slot,
-      count: Number64,
-      step: Number64,
-    },
-  });
-
-  const BeaconBlocksByRootRequest = new ListType({elementType: Root, limit: MAX_REQUEST_BLOCKS});
-
-  // Api types
-  // =========
-
-  const AttesterDuty = new ContainerType<phase0.AttesterDuty>({
-    fields: {
-      pubkey: BLSPubkey,
-      validatorIndex: ValidatorIndex,
-      committeeIndex: CommitteeIndex,
-      committeeLength: Number64,
-      committeesAtSlot: Number64,
-      validatorCommitteeIndex: Number64,
-      slot: Slot,
-    },
-  });
-
-  const AttesterDutiesApi = new ContainerType<phase0.AttesterDutiesApi>({
-    fields: {
-      data: new ListType({elementType: AttesterDuty, limit: params.VALIDATOR_REGISTRY_LIMIT}),
-      dependentRoot: Root,
-    },
-  });
-
-  const BeaconCommitteeResponse = new ContainerType<phase0.BeaconCommitteeResponse>({
-    fields: {
-      index: CommitteeIndex,
-      slot: Slot,
-      validators: CommitteeIndices,
-    },
-  });
-
-  const BeaconCommitteeSubscription = new ContainerType<phase0.BeaconCommitteeSubscription>({
-    fields: {
-      validatorIndex: ValidatorIndex,
-      committeeIndex: CommitteeIndex,
-      committeesAtSlot: Slot,
-      slot: Slot,
-      isAggregator: Boolean,
-    },
-  });
-
-  const BlockEventPayload = new ContainerType<phase0.BlockEventPayload>({
-    fields: {
-      slot: Slot,
-      block: Root,
-    },
-  });
-
-  const ChainHead = new ContainerType<phase0.ChainHead>({
-    fields: {
-      slot: Slot,
-      block: Root,
-      state: Root,
-      epochTransition: Boolean,
-    },
-  });
-
-  const ChainReorg = new ContainerType<phase0.ChainReorg>({
-    fields: {
-      slot: Slot,
-      depth: Number64,
-      oldHeadBlock: Root,
-      newHeadBlock: Root,
-      oldHeadState: Root,
-      newHeadState: Root,
-      epoch: Epoch,
-    },
-  });
-
-  const Contract = new ContainerType<phase0.Contract>({
-    fields: {
-      chainId: Number64,
-      address: Bytes32,
-    },
-  });
-
-  const FinalityCheckpoints = new ContainerType<phase0.FinalityCheckpoints>({
-    fields: {
-      previousJustified: Checkpoint,
-      currentJustified: Checkpoint,
-      finalized: Checkpoint,
-    },
-  });
-
-  const FinalizedCheckpoint = new ContainerType<phase0.FinalizedCheckpoint>({
-    fields: {
-      block: Root,
-      state: Root,
-      epoch: Epoch,
-    },
-  });
-
-  const Genesis = new ContainerType<phase0.Genesis>({
-    fields: {
-      genesisValidatorsRoot: Root,
-      genesisTime: Uint64,
-      genesisForkVersion: Version,
-    },
-  });
-
-  const ProposerDuty = new ContainerType<phase0.ProposerDuty>({
-    fields: {
-      slot: Slot,
-      validatorIndex: ValidatorIndex,
-      pubkey: BLSPubkey,
-    },
-  });
-
-  const ProposerDutiesApi = new ContainerType<phase0.ProposerDutiesApi>({
-    fields: {
-      data: new ListType({elementType: ProposerDuty, limit: params.VALIDATOR_REGISTRY_LIMIT}),
-      dependentRoot: Root,
-    },
-  });
-
-  const SignedBeaconHeaderResponse = new ContainerType<phase0.SignedBeaconHeaderResponse>({
-    fields: {
-      root: Root,
-      canonical: Boolean,
-      header: SignedBeaconBlockHeader,
-    },
-  });
-
-  const SubscribeToCommitteeSubnetPayload = new ContainerType<phase0.SubscribeToCommitteeSubnetPayload>({
-    fields: {
-      slot: Slot,
-      slotSignature: BLSSignature,
-      attestationCommitteeIndex: CommitteeIndex,
-      aggregatorPubkey: BLSPubkey,
-    },
-  });
-
-  const SyncingStatus = new ContainerType<phase0.SyncingStatus>({
-    fields: {
-      headSlot: Uint64,
-      syncDistance: Uint64,
-    },
-  });
-
-  const ValidatorBalance = new ContainerType<phase0.ValidatorBalance>({
-    fields: {
-      index: ValidatorIndex,
-      balance: Gwei,
-    },
-  });
-
-  const ValidatorResponse = new ContainerType<phase0.ValidatorResponse>({
-    fields: {
-      index: ValidatorIndex,
-      balance: Gwei,
-      status: new StringType<ValidatorStatus>(),
-      validator: Validator,
-    },
-  });
-
-  // Non-speced types
-  // ================
-
-  const SlashingProtectionBlock = new ContainerType<phase0.SlashingProtectionBlock>({
-    fields: {
-      slot: Slot,
-      signingRoot: Root,
-    },
-  });
-
-  const SlashingProtectionAttestation = new ContainerType<phase0.SlashingProtectionAttestation>({
-    fields: {
-      sourceEpoch: Epoch,
-      targetEpoch: Epoch,
-      signingRoot: Root,
-    },
-  });
-
-  const SlashingProtectionAttestationLowerBound = new ContainerType<phase0.SlashingProtectionAttestationLowerBound>({
-    fields: {
-      minSourceEpoch: Epoch,
-      minTargetEpoch: Epoch,
-    },
-  });
-
-  // MUST set typesRef here, otherwise expandedType() calls will throw
-  typesRef.set({BeaconBlock, BeaconState});
-
-  return {
-    // misc
-    Fork,
-    ForkData,
-    ENRForkID,
-    Checkpoint,
-    SlotRoot,
-    Validator,
-    AttestationData,
-    CommitteeIndices,
-    IndexedAttestation,
-    CommitteeBits,
-    PendingAttestation,
-    Eth1Data,
-    Eth1DataOrdered,
-    HistoricalBlockRoots,
-    HistoricalStateRoots,
-    HistoricalBatch,
-    DepositMessage,
-    DepositData,
-    DepositEvent,
-    BeaconBlockHeader,
-    SignedBeaconBlockHeader,
-    SigningData,
-    DepositDataRootList,
-    AttestationSubnets,
-    // operations
-    ProposerSlashing,
-    AttesterSlashing,
-    Attestation,
-    Deposit,
-    VoluntaryExit,
-    SignedVoluntaryExit,
-    // block
-    BeaconBlockBody,
-    BeaconBlock,
-    SignedBeaconBlock,
-    // state
-    EpochAttestations,
-    BeaconState,
-    // validator
-    AggregateAndProof,
-    SignedAggregateAndProof,
-    CommitteeAssignment,
-    // Validator slashing protection
-
-    // wire
-    Status,
-    Goodbye,
-    Ping,
-    Metadata,
-    BeaconBlocksByRangeRequest,
-    BeaconBlocksByRootRequest,
-    // api
-    SignedBeaconHeaderResponse,
-    SubscribeToCommitteeSubnetPayload,
-    SyncingStatus,
-    AttesterDuty,
-    ProposerDuty,
-    AttesterDutiesApi,
-    ProposerDutiesApi,
-    BeaconCommitteeSubscription,
-    Genesis,
-    ChainHead,
-    BlockEventPayload,
-    FinalizedCheckpoint,
-    ChainReorg,
-    ValidatorBalance,
-    ValidatorResponse,
-    FinalityCheckpoints,
-    BeaconCommitteeResponse,
-    Contract,
-    // Non-speced types
-    SlashingProtectionBlock,
-    SlashingProtectionAttestation,
-    SlashingProtectionAttestationLowerBound,
-  };
-}
+import * as primitiveSsz from "../primitive/sszTypes.js";
+
+const {
+  Boolean,
+  Bytes32,
+  UintNum64,
+  UintBn64,
+  Slot,
+  Epoch,
+  EpochInf,
+  CommitteeIndex,
+  ValidatorIndex,
+  Gwei,
+  Root,
+  Version,
+  ForkDigest,
+  BLSPubkey,
+  BLSSignature,
+  Domain,
+} = primitiveSsz;
+
+// Misc types
+// ==========
+
+export const AttestationSubnets = new BitVectorType(ATTESTATION_SUBNET_COUNT);
+
+/** BeaconBlockHeader where slot is bounded by the clock, and values above it are invalid */
+export const BeaconBlockHeader = new ContainerType(
+  {
+    slot: Slot,
+    proposerIndex: ValidatorIndex,
+    parentRoot: Root,
+    stateRoot: Root,
+    bodyRoot: Root,
+  },
+  {typeName: "BeaconBlockHeader", jsonCase: "eth2", cachePermanentRootStruct: true}
+);
+
+/** BeaconBlockHeader where slot is NOT bounded by the clock, i.e. slashings. So slot is a bigint. */
+export const BeaconBlockHeaderBigint = new ContainerType(
+  {
+    slot: UintBn64,
+    proposerIndex: ValidatorIndex,
+    parentRoot: Root,
+    stateRoot: Root,
+    bodyRoot: Root,
+  },
+  {typeName: "BeaconBlockHeader", jsonCase: "eth2", cachePermanentRootStruct: true}
+);
+
+export const SignedBeaconBlockHeader = new ContainerType(
+  {
+    message: BeaconBlockHeader,
+    signature: BLSSignature,
+  },
+  {typeName: "SignedBeaconBlockHeader", jsonCase: "eth2"}
+);
+
+/** Same as `SignedBeaconBlockHeader` but slot is not bounded by the clock and must be a bigint */
+export const SignedBeaconBlockHeaderBigint = new ContainerType(
+  {
+    message: BeaconBlockHeaderBigint,
+    signature: BLSSignature,
+  },
+  {typeName: "SignedBeaconBlockHeader", jsonCase: "eth2"}
+);
+
+/** Checkpoint where epoch is bounded by the clock, and values above it are invalid */
+export const Checkpoint = new ContainerType(
+  {
+    epoch: Epoch,
+    root: Root,
+  },
+  {typeName: "Checkpoint", jsonCase: "eth2"}
+);
+
+/** Checkpoint where epoch is NOT bounded by the clock, so must be a bigint */
+export const CheckpointBigint = new ContainerType(
+  {
+    epoch: UintBn64,
+    root: Root,
+  },
+  {typeName: "Checkpoint", jsonCase: "eth2"}
+);
+
+export const CommitteeBits = new BitListType(MAX_VALIDATORS_PER_COMMITTEE);
+
+export const CommitteeIndices = new ListBasicType(ValidatorIndex, MAX_VALIDATORS_PER_COMMITTEE);
+
+export const DepositMessage = new ContainerType(
+  {
+    pubkey: BLSPubkey,
+    withdrawalCredentials: Bytes32,
+    amount: UintNum64,
+  },
+  {typeName: "DepositMessage", jsonCase: "eth2"}
+);
+
+export const DepositData = new ContainerType(
+  {
+    pubkey: BLSPubkey,
+    withdrawalCredentials: Bytes32,
+    amount: UintNum64,
+    signature: BLSSignature,
+  },
+  {typeName: "DepositData", jsonCase: "eth2"}
+);
+
+export const DepositDataRootList = new ListCompositeType(Root, 2 ** DEPOSIT_CONTRACT_TREE_DEPTH);
+
+export const DepositEvent = new ContainerType(
+  {
+    depositData: DepositData,
+    blockNumber: UintNum64,
+    index: UintNum64,
+  },
+  {typeName: "DepositEvent", jsonCase: "eth2"}
+);
+
+export const Eth1Data = new ContainerType(
+  {
+    depositRoot: Root,
+    depositCount: UintNum64,
+    blockHash: Bytes32,
+  },
+  {typeName: "Eth1Data", jsonCase: "eth2"}
+);
+
+export const Eth1DataVotes = new ListCompositeType(Eth1Data, EPOCHS_PER_ETH1_VOTING_PERIOD * SLOTS_PER_EPOCH);
+
+export const Eth1DataOrdered = new ContainerType(
+  {
+    depositRoot: Root,
+    depositCount: UintNum64,
+    blockHash: Bytes32,
+    blockNumber: UintNum64,
+  },
+  {typeName: "Eth1DataOrdered", jsonCase: "eth2"}
+);
+
+/** Spec'ed but only used in lodestar as a type */
+export const Eth1Block = new ContainerType(
+  {
+    timestamp: UintNum64,
+    depositRoot: Root,
+    depositCount: UintNum64,
+  },
+  {typeName: "Eth1Block", jsonCase: "eth2"}
+);
+
+export const Fork = new ContainerType(
+  {
+    previousVersion: Version,
+    currentVersion: Version,
+    epoch: Epoch,
+  },
+  {typeName: "Fork", jsonCase: "eth2"}
+);
+
+export const ForkData = new ContainerType(
+  {
+    currentVersion: Version,
+    genesisValidatorsRoot: Root,
+  },
+  {typeName: "ForkData", jsonCase: "eth2"}
+);
+
+export const ENRForkID = new ContainerType(
+  {
+    forkDigest: ForkDigest,
+    nextForkVersion: Version,
+    nextForkEpoch: Epoch,
+  },
+  {typeName: "ENRForkID", jsonCase: "eth2"}
+);
+
+export const HistoricalBlockRoots = new VectorCompositeType(Root, SLOTS_PER_HISTORICAL_ROOT);
+export const HistoricalStateRoots = new VectorCompositeType(Root, SLOTS_PER_HISTORICAL_ROOT);
+
+export const HistoricalBatch = new ContainerType(
+  {
+    blockRoots: HistoricalBlockRoots,
+    stateRoots: HistoricalStateRoots,
+  },
+  {typeName: "HistoricalBatch", jsonCase: "eth2"}
+);
+
+/**
+ * Non-spec'ed helper type to allow efficient hashing in epoch transition.
+ * This type is like a 'Header' of HistoricalBatch where its fields are hashed.
+ */
+export const HistoricalBatchRoots = new ContainerType(
+  {
+    blockRoots: Root, // Hashed HistoricalBlockRoots
+    stateRoots: Root, // Hashed HistoricalStateRoots
+  },
+  {typeName: "HistoricalBatchRoots", jsonCase: "eth2"}
+);
+
+export const ValidatorContainer = new ContainerType(
+  {
+    pubkey: BLSPubkey,
+    withdrawalCredentials: Bytes32,
+    effectiveBalance: UintNum64,
+    slashed: Boolean,
+    activationEligibilityEpoch: EpochInf,
+    activationEpoch: EpochInf,
+    exitEpoch: EpochInf,
+    withdrawableEpoch: EpochInf,
+  },
+  {typeName: "Validator", jsonCase: "eth2"}
+);
+
+export const ValidatorNodeStruct = new ContainerNodeStructType(ValidatorContainer.fields, ValidatorContainer.opts);
+// The main Validator type is the 'ContainerNodeStructType' version
+export const Validator = ValidatorNodeStruct;
+
+// Export as stand-alone for direct tree optimizations
+export const Validators = new ListCompositeType(ValidatorNodeStruct, VALIDATOR_REGISTRY_LIMIT);
+export const Balances = new ListBasicType(UintNum64, VALIDATOR_REGISTRY_LIMIT);
+export const RandaoMixes = new VectorCompositeType(Bytes32, EPOCHS_PER_HISTORICAL_VECTOR);
+export const Slashings = new VectorBasicType(Gwei, EPOCHS_PER_SLASHINGS_VECTOR);
+export const JustificationBits = new BitVectorType(JUSTIFICATION_BITS_LENGTH);
+
+// Misc dependants
+
+export const AttestationData = new ContainerType(
+  {
+    slot: Slot,
+    index: CommitteeIndex,
+    beaconBlockRoot: Root,
+    source: Checkpoint,
+    target: Checkpoint,
+  },
+  {typeName: "AttestationData", jsonCase: "eth2", cachePermanentRootStruct: true}
+);
+
+/** Same as `AttestationData` but epoch, slot and index are not bounded and must be a bigint */
+export const AttestationDataBigint = new ContainerType(
+  {
+    slot: UintBn64,
+    index: UintBn64,
+    beaconBlockRoot: Root,
+    source: CheckpointBigint,
+    target: CheckpointBigint,
+  },
+  {typeName: "AttestationData", jsonCase: "eth2", cachePermanentRootStruct: true}
+);
+
+export const IndexedAttestation = new ContainerType(
+  {
+    attestingIndices: CommitteeIndices,
+    data: AttestationData,
+    signature: BLSSignature,
+  },
+  {typeName: "IndexedAttestation", jsonCase: "eth2"}
+);
+
+/** Same as `IndexedAttestation` but epoch, slot and index are not bounded and must be a bigint */
+export const IndexedAttestationBigint = new ContainerType(
+  {
+    attestingIndices: CommitteeIndices,
+    data: AttestationDataBigint,
+    signature: BLSSignature,
+  },
+  {typeName: "IndexedAttestation", jsonCase: "eth2"}
+);
+
+export const PendingAttestation = new ContainerType(
+  {
+    aggregationBits: CommitteeBits,
+    data: AttestationData,
+    inclusionDelay: Slot,
+    proposerIndex: ValidatorIndex,
+  },
+  {typeName: "PendingAttestation", jsonCase: "eth2"}
+);
+
+export const SigningData = new ContainerType(
+  {
+    objectRoot: Root,
+    domain: Domain,
+  },
+  {typeName: "SigningData", jsonCase: "eth2"}
+);
+
+// Operations types
+// ================
+
+export const Attestation = new ContainerType(
+  {
+    aggregationBits: CommitteeBits,
+    data: AttestationData,
+    signature: BLSSignature,
+  },
+  {typeName: "Attestation", jsonCase: "eth2"}
+);
+
+export const AttesterSlashing = new ContainerType(
+  {
+    // In state transition, AttesterSlashing attestations are only partially validated. Their slot and epoch could
+    // be higher than the clock and the slashing would still be valid. Same applies to attestation data index, which
+    // can be any arbitrary value. Must use bigint variants to hash correctly to all possible values
+    attestation1: IndexedAttestationBigint,
+    attestation2: IndexedAttestationBigint,
+  },
+  {typeName: "AttesterSlashing", jsonCase: "eth2"}
+);
+
+export const Deposit = new ContainerType(
+  {
+    proof: new VectorCompositeType(Bytes32, DEPOSIT_CONTRACT_TREE_DEPTH + 1),
+    data: DepositData,
+  },
+  {typeName: "Deposit", jsonCase: "eth2"}
+);
+
+export const ProposerSlashing = new ContainerType(
+  {
+    // In state transition, ProposerSlashing headers are only partially validated. Their slot could be higher than the
+    // clock and the slashing would still be valid. Must use bigint variants to hash correctly to all possible values
+    signedHeader1: SignedBeaconBlockHeaderBigint,
+    signedHeader2: SignedBeaconBlockHeaderBigint,
+  },
+  {typeName: "ProposerSlashing", jsonCase: "eth2"}
+);
+
+export const VoluntaryExit = new ContainerType(
+  {
+    epoch: Epoch,
+    validatorIndex: ValidatorIndex,
+  },
+  {typeName: "VoluntaryExit", jsonCase: "eth2", cachePermanentRootStruct: true}
+);
+
+export const SignedVoluntaryExit = new ContainerType(
+  {
+    message: VoluntaryExit,
+    signature: BLSSignature,
+  },
+  {typeName: "SignedVoluntaryExit", jsonCase: "eth2"}
+);
+
+// Block types
+// ===========
+
+export const BeaconBlockBody = new ContainerType(
+  {
+    randaoReveal: BLSSignature,
+    eth1Data: Eth1Data,
+    graffiti: Bytes32,
+    proposerSlashings: new ListCompositeType(ProposerSlashing, MAX_PROPOSER_SLASHINGS),
+    attesterSlashings: new ListCompositeType(AttesterSlashing, MAX_ATTESTER_SLASHINGS),
+    attestations: new ListCompositeType(Attestation, MAX_ATTESTATIONS),
+    deposits: new ListCompositeType(Deposit, MAX_DEPOSITS),
+    voluntaryExits: new ListCompositeType(SignedVoluntaryExit, MAX_VOLUNTARY_EXITS),
+  },
+  {typeName: "BeaconBlockBody", jsonCase: "eth2", cachePermanentRootStruct: true}
+);
+
+export const BeaconBlock = new ContainerType(
+  {
+    slot: Slot,
+    proposerIndex: ValidatorIndex,
+    parentRoot: Root,
+    stateRoot: Root,
+    body: BeaconBlockBody,
+  },
+  {typeName: "BeaconBlock", jsonCase: "eth2", cachePermanentRootStruct: true}
+);
+
+export const SignedBeaconBlock = new ContainerType(
+  {
+    message: BeaconBlock,
+    signature: BLSSignature,
+  },
+  {typeName: "SignedBeaconBlock", jsonCase: "eth2"}
+);
+
+// State types
+// ===========
+
+export const EpochAttestations = new ListCompositeType(PendingAttestation, MAX_ATTESTATIONS * SLOTS_PER_EPOCH);
+
+export const BeaconState = new ContainerType(
+  {
+    // Misc
+    genesisTime: UintNum64,
+    genesisValidatorsRoot: Root,
+    slot: Slot,
+    fork: Fork,
+    // History
+    latestBlockHeader: BeaconBlockHeader,
+    blockRoots: HistoricalBlockRoots,
+    stateRoots: HistoricalStateRoots,
+    historicalRoots: new ListCompositeType(Root, HISTORICAL_ROOTS_LIMIT),
+    // Eth1
+    eth1Data: Eth1Data,
+    eth1DataVotes: Eth1DataVotes,
+    eth1DepositIndex: UintNum64,
+    // Registry
+    validators: Validators,
+    balances: Balances,
+    randaoMixes: RandaoMixes,
+    // Slashings
+    slashings: Slashings,
+    // Attestations
+    previousEpochAttestations: EpochAttestations,
+    currentEpochAttestations: EpochAttestations,
+    // Finality
+    justificationBits: JustificationBits,
+    previousJustifiedCheckpoint: Checkpoint,
+    currentJustifiedCheckpoint: Checkpoint,
+    finalizedCheckpoint: Checkpoint,
+  },
+  {typeName: "BeaconState", jsonCase: "eth2"}
+);
+
+// Validator types
+// ===============
+
+export const CommitteeAssignment = new ContainerType(
+  {
+    validators: CommitteeIndices,
+    committeeIndex: CommitteeIndex,
+    slot: Slot,
+  },
+  {typeName: "CommitteeAssignment", jsonCase: "eth2"}
+);
+
+export const AggregateAndProof = new ContainerType(
+  {
+    aggregatorIndex: ValidatorIndex,
+    aggregate: Attestation,
+    selectionProof: BLSSignature,
+  },
+  {typeName: "AggregateAndProof", jsonCase: "eth2", cachePermanentRootStruct: true}
+);
+
+export const SignedAggregateAndProof = new ContainerType(
+  {
+    message: AggregateAndProof,
+    signature: BLSSignature,
+  },
+  {typeName: "SignedAggregateAndProof", jsonCase: "eth2"}
+);
+
+// ReqResp types
+// =============
+
+export const Status = new ContainerType(
+  {
+    forkDigest: ForkDigest,
+    finalizedRoot: Root,
+    finalizedEpoch: Epoch,
+    headRoot: Root,
+    headSlot: Slot,
+  },
+  {typeName: "Status", jsonCase: "eth2"}
+);
+
+export const Goodbye = UintBn64;
+
+export const Ping = UintBn64;
+
+export const Metadata = new ContainerType(
+  {
+    seqNumber: UintBn64,
+    attnets: AttestationSubnets,
+  },
+  {typeName: "Metadata", jsonCase: "eth2"}
+);
+
+export const BeaconBlocksByRangeRequest = new ContainerType(
+  {
+    startSlot: Slot,
+    count: UintNum64,
+    step: UintNum64,
+  },
+  {typeName: "BeaconBlocksByRangeRequest", jsonCase: "eth2"}
+);
+
+export const BeaconBlocksByRootRequest = new ListCompositeType(Root, MAX_REQUEST_BLOCKS);
+
+// Api types
+// =========
+
+export const Genesis = new ContainerType(
+  {
+    genesisValidatorsRoot: Root,
+    genesisTime: UintNum64,
+    genesisForkVersion: Version,
+  },
+  {typeName: "Genesis", jsonCase: "eth2"}
+);

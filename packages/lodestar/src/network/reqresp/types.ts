@@ -1,5 +1,5 @@
-import {ForkName, IBeaconConfig} from "@chainsafe/lodestar-config";
-import {allForks, phase0} from "@chainsafe/lodestar-types";
+import {ForkName} from "@chainsafe/lodestar-params";
+import {allForks, phase0, ssz, Slot} from "@chainsafe/lodestar-types";
 
 export const protocolPrefix = "/eth2/beacon_chain/req";
 
@@ -21,7 +21,7 @@ export enum Version {
 
 /**
  * Available request/response encoding strategies:
- * https://github.com/ethereum/eth2.0-specs/blob/dev/specs/phase0/p2p-interface.md#encoding-strategies
+ * https://github.com/ethereum/consensus-specs/blob/v1.1.10/specs/phase0/p2p-interface.md#encoding-strategies
  */
 export enum Encoding {
   SSZ_SNAPPY = "ssz_snappy",
@@ -38,6 +38,7 @@ export const protocolsSupported: [Method, Version, Encoding][] = [
   [Method.Goodbye, Version.V1, Encoding.SSZ_SNAPPY],
   [Method.Ping, Version.V1, Encoding.SSZ_SNAPPY],
   [Method.Metadata, Version.V1, Encoding.SSZ_SNAPPY],
+  [Method.Metadata, Version.V2, Encoding.SSZ_SNAPPY],
   [Method.BeaconBlocksByRange, Version.V1, Encoding.SSZ_SNAPPY],
   [Method.BeaconBlocksByRange, Version.V2, Encoding.SSZ_SNAPPY],
   [Method.BeaconBlocksByRoot, Version.V1, Encoding.SSZ_SNAPPY],
@@ -51,16 +52,6 @@ export const isSingleResponseChunkByMethod: {[K in Method]: boolean} = {
   [Method.Metadata]: true,
   [Method.BeaconBlocksByRange]: false, // A stream, 0 or more response chunks
   [Method.BeaconBlocksByRoot]: false,
-};
-
-/** Deserialize some types to TreeBacked directly for more efficient hashing */
-export const deserializeToTreeByMethod: {[K in Method]: boolean} = {
-  [Method.Status]: false,
-  [Method.Goodbye]: false,
-  [Method.Ping]: false,
-  [Method.Metadata]: false,
-  [Method.BeaconBlocksByRange]: true,
-  [Method.BeaconBlocksByRoot]: true,
 };
 
 export const CONTEXT_BYTES_FORK_DIGEST_LENGTH = 4;
@@ -92,20 +83,20 @@ export function contextBytesTypeByProtocol(protocol: Protocol): ContextBytesType
 
 /** Request SSZ type for each method and ForkName */
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/explicit-function-return-type
-export function getRequestSzzTypeByMethod(config: IBeaconConfig, method: Method) {
+export function getRequestSzzTypeByMethod(method: Method) {
   switch (method) {
     case Method.Status:
-      return config.types.phase0.Status;
+      return ssz.phase0.Status;
     case Method.Goodbye:
-      return config.types.phase0.Goodbye;
+      return ssz.phase0.Goodbye;
     case Method.Ping:
-      return config.types.phase0.Ping;
+      return ssz.phase0.Ping;
     case Method.Metadata:
       return null;
     case Method.BeaconBlocksByRange:
-      return config.types.phase0.BeaconBlocksByRangeRequest;
+      return ssz.phase0.BeaconBlocksByRangeRequest;
     case Method.BeaconBlocksByRoot:
-      return config.types.phase0.BeaconBlocksByRootRequest;
+      return ssz.phase0.BeaconBlocksByRootRequest;
   }
 }
 
@@ -120,32 +111,62 @@ export type RequestBodyByMethod = {
 
 /** Response SSZ type for each method and ForkName */
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/explicit-function-return-type
-export function getResponseSzzTypeByMethod(config: IBeaconConfig, method: Method, forkName: ForkName) {
-  switch (method) {
+export function getResponseSzzTypeByMethod(protocol: Protocol, forkName: ForkName) {
+  switch (protocol.method) {
     case Method.Status:
-      return config.types.phase0.Status;
+      return ssz.phase0.Status;
     case Method.Goodbye:
-      return config.types.phase0.Goodbye;
+      return ssz.phase0.Goodbye;
     case Method.Ping:
-      return config.types.phase0.Ping;
-    case Method.Metadata:
-      return config.types.phase0.Metadata;
+      return ssz.phase0.Ping;
+    case Method.Metadata: {
+      // V1 -> phase0.Metadata, V2 -> altair.Metadata
+      const fork = protocol.version === Version.V1 ? ForkName.phase0 : ForkName.altair;
+      return ssz[fork].Metadata;
+    }
     case Method.BeaconBlocksByRange:
     case Method.BeaconBlocksByRoot:
-      switch (forkName) {
-        case ForkName.phase0:
-          return config.types.phase0.SignedBeaconBlock;
-        case ForkName.altair:
-          return config.types.altair.SignedBeaconBlock;
-      }
+      // SignedBeaconBlock type is changed in altair
+      return ssz[forkName].SignedBeaconBlock;
   }
 }
 
-export type ResponseBodyByMethod = {
+/** Return either an ssz type or the serializer for ReqRespBlockResponse */
+export function getOutgoingSerializerByMethod(protocol: Protocol): OutgoingSerializer {
+  switch (protocol.method) {
+    case Method.Status:
+      return ssz.phase0.Status;
+    case Method.Goodbye:
+      return ssz.phase0.Goodbye;
+    case Method.Ping:
+      return ssz.phase0.Ping;
+    case Method.Metadata: {
+      // V1 -> phase0.Metadata, V2 -> altair.Metadata
+      const fork = protocol.version === Version.V1 ? ForkName.phase0 : ForkName.altair;
+      return ssz[fork].Metadata;
+    }
+    case Method.BeaconBlocksByRange:
+    case Method.BeaconBlocksByRoot:
+      return reqRespBlockResponseSerializer;
+  }
+}
+
+type CommonResponseBodyByMethod = {
   [Method.Status]: phase0.Status;
   [Method.Goodbye]: phase0.Goodbye;
   [Method.Ping]: phase0.Ping;
   [Method.Metadata]: phase0.Metadata;
+};
+
+// Used internally by lodestar to response to beacon_blocks_by_range and beacon_blocks_by_root
+// without having to deserialize and serialize from/to bytes
+export type OutgoingResponseBodyByMethod = CommonResponseBodyByMethod & {
+  [Method.BeaconBlocksByRange]: ReqRespBlockResponse;
+  [Method.BeaconBlocksByRoot]: ReqRespBlockResponse;
+};
+
+// p2p protocol in the spec
+export type IncomingResponseBodyByMethod = CommonResponseBodyByMethod & {
   [Method.BeaconBlocksByRange]: allForks.SignedBeaconBlock;
   [Method.BeaconBlocksByRoot]: allForks.SignedBeaconBlock;
 };
@@ -153,12 +174,16 @@ export type ResponseBodyByMethod = {
 // Helper types to generically define the arguments of the encoder functions
 
 export type RequestBody = RequestBodyByMethod[Method];
-export type ResponseBody = ResponseBodyByMethod[Method];
-export type RequestOrResponseBody = RequestBody | ResponseBody;
+export type OutgoingResponseBody = OutgoingResponseBodyByMethod[Method];
+export type IncomingResponseBody = IncomingResponseBodyByMethod[Method];
+export type RequestOrIncomingResponseBody = RequestBody | IncomingResponseBody;
+export type RequestOrOutgoingResponseBody = RequestBody | OutgoingResponseBody;
 
 export type RequestType = Exclude<ReturnType<typeof getRequestSzzTypeByMethod>, null>;
 export type ResponseType = ReturnType<typeof getResponseSzzTypeByMethod>;
 export type RequestOrResponseType = RequestType | ResponseType;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type OutgoingSerializer = {serialize: (body: any) => Uint8Array};
 
 // Link each method with its type for more type-safe event handlers
 
@@ -166,5 +191,19 @@ export type RequestTypedContainer = {
   [K in Method]: {method: K; body: RequestBodyByMethod[K]};
 }[Method];
 export type ResponseTypedContainer = {
-  [K in Method]: {method: K; body: ResponseBodyByMethod[K]};
+  [K in Method]: {method: K; body: OutgoingResponseBodyByMethod[K]};
 }[Method];
+
+/** Serializer for ReqRespBlockResponse */
+export const reqRespBlockResponseSerializer = {
+  serialize: (chunk: ReqRespBlockResponse): Uint8Array => {
+    return chunk.bytes;
+  },
+};
+
+/** This type helps response to beacon_block_by_range and beacon_block_by_root more efficiently */
+export type ReqRespBlockResponse = {
+  /** Deserialized data of allForks.SignedBeaconBlock */
+  bytes: Uint8Array;
+  slot: Slot;
+};

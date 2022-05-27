@@ -29,7 +29,7 @@ export class SubnetMap {
    **/
   request(requestedSubnet: RequestedSubnet): void {
     const {subnet, toSlot} = requestedSubnet;
-    this.subnets.set(subnet, Math.max(this.subnets.get(subnet) || 0, toSlot));
+    this.subnets.set(subnet, Math.max(this.subnets.get(subnet) ?? 0, toSlot));
   }
 
   /**
@@ -53,6 +53,17 @@ export class SubnetMap {
       }
     }
     return subnetIds;
+  }
+
+  /** Return subnetIds with a `toSlot` equal greater than `currentSlot` */
+  getActiveTtl(currentSlot: Slot): RequestedSubnet[] {
+    const subnets: RequestedSubnet[] = [];
+    for (const [subnet, toSlot] of this.subnets.entries()) {
+      if (toSlot >= currentSlot) {
+        subnets.push({subnet, toSlot});
+      }
+    }
+    return subnets;
   }
 
   /** Return subnetIds with a `toSlot` less than `currentSlot`. Also deletes expired entries */

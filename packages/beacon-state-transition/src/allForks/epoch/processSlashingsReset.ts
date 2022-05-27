@@ -1,10 +1,14 @@
-import {allForks} from "@chainsafe/lodestar-types";
-import {IEpochProcess, CachedBeaconState} from "../util";
+import {EPOCHS_PER_SLASHINGS_VECTOR} from "@chainsafe/lodestar-params";
+import {EpochProcess, CachedBeaconStateAllForks} from "../../types.js";
 
-export function processSlashingsReset(state: CachedBeaconState<allForks.BeaconState>, process: IEpochProcess): void {
-  const nextEpoch = process.currentEpoch + 1;
-  const {EPOCHS_PER_SLASHINGS_VECTOR} = state.config.params;
+/**
+ * Reset the next slashings balance accumulator
+ *
+ * PERF: Almost no (constant) cost
+ */
+export function processSlashingsReset(state: CachedBeaconStateAllForks, epochProcess: EpochProcess): void {
+  const nextEpoch = epochProcess.currentEpoch + 1;
 
   // reset slashings
-  state.slashings[nextEpoch % EPOCHS_PER_SLASHINGS_VECTOR] = BigInt(0);
+  state.slashings.set(nextEpoch % EPOCHS_PER_SLASHINGS_VECTOR, BigInt(0));
 }

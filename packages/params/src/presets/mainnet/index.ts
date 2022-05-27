@@ -1,13 +1,12 @@
-import {createIBeaconParams} from "../../utils";
-import {IBeaconParams} from "../../interface";
+import {BeaconPreset} from "../../interface/index.js";
+import {phase0} from "./phase0.js";
+import {altair} from "./altair.js";
+import {bellatrix} from "./bellatrix.js";
 
-import {phase0Json} from "./phase0";
-import {altairJson} from "./altair";
+export const commit = "v1.1.9";
 
-// Apr 21 commit, waiting for "v1.1.0-alpha.4"
-export const commit = "66e1a2858f9fbebf5e00539d1a34b78025673d37";
-
-export const params = createIBeaconParams({
-  ...phase0Json,
-  ...altairJson,
-}) as IBeaconParams;
+export const preset: BeaconPreset = {
+  ...phase0,
+  ...altair,
+  ...bellatrix,
+};

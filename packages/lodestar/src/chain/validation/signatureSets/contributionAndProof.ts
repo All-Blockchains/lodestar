@@ -1,25 +1,26 @@
-import {allForks, altair} from "@chainsafe/lodestar-types";
+import {DOMAIN_CONTRIBUTION_AND_PROOF} from "@chainsafe/lodestar-params";
+import {altair, ssz} from "@chainsafe/lodestar-types";
 import {
-  CachedBeaconState,
-  computeEpochAtSlot,
+  CachedBeaconStateAllForks,
   computeSigningRoot,
-  getDomain,
   ISignatureSet,
   SignatureSetType,
 } from "@chainsafe/lodestar-beacon-state-transition";
 
 export function getContributionAndProofSignatureSet(
-  state: CachedBeaconState<allForks.BeaconState>,
+  state: CachedBeaconStateAllForks,
   signedContributionAndProof: altair.SignedContributionAndProof
 ): ISignatureSet {
-  const {config, epochCtx} = state;
-  const msgEpoch = computeEpochAtSlot(config, signedContributionAndProof.message.contribution.slot);
-  const domain = getDomain(config, state, config.params.DOMAIN_CONTRIBUTION_AND_PROOF, msgEpoch);
+  const {epochCtx} = state;
+  const domain = state.config.getDomain(
+    DOMAIN_CONTRIBUTION_AND_PROOF,
+    signedContributionAndProof.message.contribution.slot
+  );
   const signingData = signedContributionAndProof.message;
   return {
     type: SignatureSetType.single,
     pubkey: epochCtx.index2pubkey[signedContributionAndProof.message.aggregatorIndex],
-    signingRoot: computeSigningRoot(config, config.types.altair.ContributionAndProof, signingData, domain),
-    signature: signedContributionAndProof.signature.valueOf() as Uint8Array,
+    signingRoot: computeSigningRoot(ssz.altair.ContributionAndProof, signingData, domain),
+    signature: signedContributionAndProof.signature,
   };
 }

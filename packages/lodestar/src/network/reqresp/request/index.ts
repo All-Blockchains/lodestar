@@ -1,36 +1,35 @@
-import {Connection} from "libp2p";
-import {AbortSignal} from "abort-controller";
 import pipe from "it-pipe";
 import PeerId from "peer-id";
 import {Libp2p} from "libp2p/src/connection-manager";
-import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {ErrorAborted, ILogger, Context, withTimeout, TimeoutError} from "@chainsafe/lodestar-utils";
-import {IForkDigestContext} from "../../../util/forkDigestContext";
-import {timeoutOptions} from "../../../constants";
-import {getAgentVersionFromPeerStore, prettyPrintPeerId} from "../../util";
-import {Method, Encoding, Protocol, Version, ResponseBody, RequestBody} from "../types";
-import {formatProtocolId} from "../utils";
-import {ResponseError} from "../response";
-import {requestEncode} from "../encoders/requestEncode";
-import {responseDecode} from "../encoders/responseDecode";
-import {Libp2pConnection} from "../interface";
-import {collectResponses} from "./collectResponses";
-import {maxTotalResponseTimeout, responseTimeoutsHandler} from "./responseTimeoutsHandler";
+import {AbortSignal} from "@chainsafe/abort-controller";
+import {IForkDigestContext} from "@chainsafe/lodestar-config";
+import {ErrorAborted, ILogger, withTimeout, TimeoutError} from "@chainsafe/lodestar-utils";
+import {timeoutOptions} from "../../../constants/index.js";
+import {prettyPrintPeerId} from "../../util.js";
+import {PeersData} from "../../peers/peersData.js";
+import {Method, Encoding, Protocol, Version, IncomingResponseBody, RequestBody} from "../types.js";
+import {formatProtocolId, renderRequestBody} from "../utils/index.js";
+import {ResponseError} from "../response/index.js";
+import {requestEncode} from "../encoders/requestEncode.js";
+import {responseDecode} from "../encoders/responseDecode.js";
+import {Libp2pConnection} from "../interface.js";
+import {collectResponses} from "./collectResponses.js";
+import {maxTotalResponseTimeout, responseTimeoutsHandler} from "./responseTimeoutsHandler.js";
 import {
   RequestError,
   RequestErrorCode,
   RequestInternalError,
   IRequestErrorMetadata,
   responseStatusErrorToRequestError,
-} from "./errors";
+} from "./errors.js";
 
 export {RequestError, RequestErrorCode};
 
 type SendRequestModules = {
-  config: IBeaconConfig;
   logger: ILogger;
   forkDigestContext: IForkDigestContext;
   libp2p: Libp2p;
+  peersData: PeersData;
 };
 
 /**
@@ -44,8 +43,8 @@ type SendRequestModules = {
  *    - Any part of the response_chunk fails validation. Throws a typed error (see `SszSnappyError`)
  *    - The maximum number of requested chunks are read. Does not throw, returns read chunks only.
  */
-export async function sendRequest<T extends ResponseBody | ResponseBody[]>(
-  {config, logger, forkDigestContext, libp2p}: SendRequestModules,
+export async function sendRequest<T extends IncomingResponseBody | IncomingResponseBody[]>(
+  {logger, forkDigestContext, libp2p, peersData}: SendRequestModules,
   peerId: PeerId,
   method: Method,
   encoding: Encoding,
@@ -58,8 +57,8 @@ export async function sendRequest<T extends ResponseBody | ResponseBody[]>(
 ): Promise<T> {
   const {REQUEST_TIMEOUT, DIAL_TIMEOUT} = {...timeoutOptions, ...options};
   const peer = prettyPrintPeerId(peerId);
-  const agentVersion = getAgentVersionFromPeerStore(peerId, libp2p.peerStore.metadataBook);
-  const logCtx = {method, encoding, agentVersion, peer, requestId};
+  const client = peersData.getPeerKind(peerId.toB58String());
+  const logCtx = {method, encoding, client, peer, requestId};
 
   if (signal?.aborted) {
     throw new ErrorAborted("sendRequest");
@@ -89,7 +88,8 @@ export async function sendRequest<T extends ResponseBody | ResponseBody[]>(
     const {stream, protocol: protocolId} = await withTimeout(
       async (timeoutAndParentSignal) => {
         const protocolIds = Array.from(protocols.keys());
-        const conn = (await libp2p.dialProtocol(peerId, protocolIds, {signal: timeoutAndParentSignal})) as Connection;
+        const conn = await libp2p.dialProtocol(peerId, protocolIds, {signal: timeoutAndParentSignal});
+        // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
         if (!conn) throw Error("dialProtocol timeout");
         // TODO: libp2p-ts type Stream does not declare .abort() and requires casting to unknown here
         // Remove when https://github.com/ChainSafe/lodestar/issues/2167
@@ -98,7 +98,7 @@ export async function sendRequest<T extends ResponseBody | ResponseBody[]>(
       },
       DIAL_TIMEOUT,
       signal
-    ).catch((e) => {
+    ).catch((e: Error) => {
       if (e instanceof TimeoutError) {
         throw new RequestInternalError({code: RequestErrorCode.DIAL_TIMEOUT});
       } else {
@@ -110,27 +110,25 @@ export async function sendRequest<T extends ResponseBody | ResponseBody[]>(
     const protocol = protocols.get(protocolId);
     if (!protocol) throw Error(`dialProtocol selected unknown protocolId ${protocolId}`);
 
-    logger.debug("Req  sending request", {...logCtx, requestBody} as Context);
+    logger.debug("Req  sending request", {...logCtx, body: renderRequestBody(method, requestBody)});
 
     // Spec: The requester MUST close the write side of the stream once it finishes writing the request message
     // Impl: stream.sink is closed automatically by js-libp2p-mplex when piped source is exhausted
 
     // REQUEST_TIMEOUT: Non-spec timeout from sending request until write stream closed by responder
     // Note: libp2p.stop() will close all connections, so not necessary to abort this pipe on parent stop
-    await withTimeout(
-      () => pipe(requestEncode(config, protocol, requestBody), stream.sink),
-      REQUEST_TIMEOUT,
-      signal
-    ).catch((e) => {
-      // Must close the stream read side (stream.source) manually AND the write side
-      stream.abort(e);
+    await withTimeout(() => pipe(requestEncode(protocol, requestBody), stream.sink), REQUEST_TIMEOUT, signal).catch(
+      (e) => {
+        // Must close the stream read side (stream.source) manually AND the write side
+        stream.abort(e);
 
-      if (e instanceof TimeoutError) {
-        throw new RequestInternalError({code: RequestErrorCode.REQUEST_TIMEOUT});
-      } else {
-        throw new RequestInternalError({code: RequestErrorCode.REQUEST_ERROR, error: e as Error});
+        if (e instanceof TimeoutError) {
+          throw new RequestInternalError({code: RequestErrorCode.REQUEST_TIMEOUT});
+        } else {
+          throw new RequestInternalError({code: RequestErrorCode.REQUEST_ERROR, error: e as Error});
+        }
       }
-    });
+    );
 
     logger.debug("Req  request sent", logCtx);
 
@@ -140,11 +138,11 @@ export async function sendRequest<T extends ResponseBody | ResponseBody[]>(
         () =>
           pipe(
             stream.source,
-            responseTimeoutsHandler(responseDecode(config, forkDigestContext, protocol), options),
+            responseTimeoutsHandler(responseDecode(forkDigestContext, protocol), options),
             collectResponses(method, maxResponses)
           ),
         maxTotalResponseTimeout(maxResponses, options)
-      ).catch((e) => {
+      ).catch((e: Error) => {
         // No need to close the stream here, the outter finally {} block will
         if (e instanceof TimeoutError) {
           throw new RequestInternalError({code: RequestErrorCode.RESPONSE_TIMEOUT});
@@ -156,7 +154,8 @@ export async function sendRequest<T extends ResponseBody | ResponseBody[]>(
       // NOTE: Only log once per request to verbose, intermediate steps to debug
       // NOTE: Do not log the response, logs get extremely cluttered
       // NOTE: add double space after "Req  " to align log with the "Resp " log
-      logger.verbose("Req  done", logCtx);
+      const numResponse = Array.isArray(responses) ? responses.length : 1;
+      logger.verbose("Req  done", {...logCtx, numResponse});
 
       return responses as T;
     } finally {

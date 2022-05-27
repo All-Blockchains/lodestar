@@ -1,11 +1,11 @@
+import deepmerge from "deepmerge";
 import {altair} from "@chainsafe/lodestar-types";
 import {isPlainObject, RecursivePartial} from "@chainsafe/lodestar-utils";
-import deepmerge from "deepmerge";
 
 export function generateSyncCommitteeSignature(
-  override: RecursivePartial<altair.SyncCommitteeSignature>
-): altair.SyncCommitteeSignature {
-  return deepmerge<altair.SyncCommitteeSignature, RecursivePartial<altair.SyncCommitteeSignature>>(
+  override: RecursivePartial<altair.SyncCommitteeMessage>
+): altair.SyncCommitteeMessage {
+  return deepmerge<altair.SyncCommitteeMessage, RecursivePartial<altair.SyncCommitteeMessage>>(
     {
       slot: 0,
       beaconBlockRoot: Buffer.alloc(32),

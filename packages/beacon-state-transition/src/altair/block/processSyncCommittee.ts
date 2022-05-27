@@ -1,70 +1,101 @@
-import {verifyAggregate} from "@chainsafe/bls";
-import {altair} from "@chainsafe/lodestar-types";
-import {assert} from "@chainsafe/lodestar-utils";
+import {altair, ssz} from "@chainsafe/lodestar-types";
+import {DOMAIN_SYNC_COMMITTEE} from "@chainsafe/lodestar-params";
+import {byteArrayEquals} from "@chainsafe/ssz";
 
 import {
-  computeEpochAtSlot,
   computeSigningRoot,
-  getActiveValidatorIndices,
   getBlockRootAtSlot,
-  getCurrentEpoch,
-  getDomain,
-  getBeaconProposerIndex,
-  increaseBalance,
-} from "../../util";
-import * as phase0 from "../../phase0";
-import * as naive from "../../naive";
-import {getSyncCommitteeIndices} from "../state_accessor";
-import {CachedBeaconState} from "../../allForks/util";
+  ISignatureSet,
+  SignatureSetType,
+  verifySignatureSet,
+} from "../../util/index.js";
+import {CachedBeaconStateAllForks} from "../../types.js";
+import {G2_POINT_AT_INFINITY} from "../../constants/index.js";
+import {getUnparticipantValues} from "../../util/array.js";
 
-export function processSyncCommittee(
-  state: CachedBeaconState<altair.BeaconState>,
-  aggregate: altair.SyncAggregate,
+export function processSyncAggregate(
+  state: CachedBeaconStateAllForks,
+  block: altair.BeaconBlock,
   verifySignatures = true
 ): void {
-  const {config} = state;
-  const previousSlot = Math.max(state.slot, 1) - 1;
-  const currentEpoch = getCurrentEpoch(config, state);
-  const committeeIndices = getSyncCommitteeIndices(config, state, currentEpoch);
-  const participantIndices = committeeIndices.filter((index) => !!aggregate.syncCommitteeBits[index]);
-  const committeePubkeys = Array.from(state.currentSyncCommittee.pubkeys);
-  const participantPubkeys = committeePubkeys.filter((pubkey, index) => !!aggregate.syncCommitteeBits[index]);
-  const domain = getDomain(
-    config,
-    state,
-    config.params.DOMAIN_SYNC_COMMITTEE,
-    computeEpochAtSlot(config, previousSlot)
-  );
-  const signingRoot = computeSigningRoot(
-    config,
-    config.types.Root,
-    getBlockRootAtSlot(config, state, previousSlot),
-    domain
-  );
+  const {syncParticipantReward, syncProposerReward} = state.epochCtx;
+  const committeeIndices = state.epochCtx.currentSyncCommitteeIndexed.validatorIndices;
+  const participantIndices = block.body.syncAggregate.syncCommitteeBits.intersectValues(committeeIndices);
+  const unparticipantIndices = getUnparticipantValues(participantIndices, committeeIndices);
+
+  // different from the spec but not sure how to get through signature verification for default/empty SyncAggregate in the spec test
   if (verifySignatures) {
-    assert.true(
-      verifyAggregate(
-        participantPubkeys.map((pubkey) => pubkey.valueOf() as Uint8Array),
-        signingRoot,
-        aggregate.syncCommitteeSignature.valueOf() as Uint8Array
-      ),
-      "Sync committee signature invalid"
-    );
+    // This is to conform to the spec - we want the signature to be verified
+    const signatureSet = getSyncCommitteeSignatureSet(state, block, participantIndices);
+    // When there's no participation we consider the signature valid and just ignore i
+    if (signatureSet !== null && !verifySignatureSet(signatureSet)) {
+      throw Error("Sync committee signature invalid");
+    }
   }
 
-  let participantRewards = BigInt(0);
-  const activeValidatorCount = BigInt(getActiveValidatorIndices(state, currentEpoch).length);
-  for (const participantIndex of participantIndices) {
-    // eslint-disable-next-line import/namespace
-    const baseReward = naive.phase0.getBaseReward(config, (state as unknown) as phase0.BeaconState, participantIndex);
-    const reward =
-      (baseReward * activeValidatorCount) / BigInt(committeeIndices.length) / BigInt(config.params.SLOTS_PER_EPOCH);
-    increaseBalance(state, participantIndex, reward);
-    participantRewards += reward;
+  const balances = state.balances;
+
+  // Proposer reward
+  const proposerIndex = state.epochCtx.getBeaconProposer(state.slot);
+  balances.set(proposerIndex, balances.get(proposerIndex) + syncProposerReward * participantIndices.length);
+
+  // Positive rewards for participants
+  for (const index of participantIndices) {
+    balances.set(index, balances.get(index) + syncParticipantReward);
   }
-  increaseBalance(
-    state,
-    getBeaconProposerIndex(config, state),
-    participantRewards / BigInt(config.params.PROPOSER_REWARD_QUOTIENT)
-  );
+
+  // Negative rewards for non participants
+  for (const index of unparticipantIndices) {
+    balances.set(index, balances.get(index) - syncParticipantReward);
+  }
+}
+
+export function getSyncCommitteeSignatureSet(
+  state: CachedBeaconStateAllForks,
+  block: altair.BeaconBlock,
+  /** Optional parameter to prevent computing it twice */
+  participantIndices?: number[]
+): ISignatureSet | null {
+  const {epochCtx} = state;
+  const {syncAggregate} = block.body;
+  const signature = syncAggregate.syncCommitteeSignature;
+
+  // The spec uses the state to get the previous slot
+  // ```python
+  // previous_slot = max(state.slot, Slot(1)) - Slot(1)
+  // ```
+  // However we need to run the function getSyncCommitteeSignatureSet() for all the blocks in a epoch
+  // with the same state when verifying blocks in batch on RangeSync. Therefore we use the block.slot.
+  //
+  // This function expects that block.slot <= state.slot, otherwise we can't get the root sign by the sync committee.
+  // process_sync_committee() is run at the end of process_block(). process_block() is run after process_slots()
+  // which in the spec forces state.slot to equal block.slot.
+  const previousSlot = Math.max(block.slot, 1) - 1;
+
+  const rootSigned = getBlockRootAtSlot(state, previousSlot);
+
+  if (!participantIndices) {
+    const committeeIndices = state.epochCtx.currentSyncCommitteeIndexed.validatorIndices;
+    participantIndices = syncAggregate.syncCommitteeBits.intersectValues(committeeIndices);
+  }
+
+  // When there's no participation we consider the signature valid and just ignore it
+  if (participantIndices.length === 0) {
+    // Must set signature as G2_POINT_AT_INFINITY when participating bits are empty
+    // https://github.com/ethereum/eth2.0-specs/blob/30f2a076377264677e27324a8c3c78c590ae5e20/specs/altair/bls.md#eth2_fast_aggregate_verify
+    if (byteArrayEquals(signature, G2_POINT_AT_INFINITY)) {
+      return null;
+    } else {
+      throw Error("Empty sync committee signature is not infinity");
+    }
+  }
+
+  const domain = state.config.getDomain(DOMAIN_SYNC_COMMITTEE, previousSlot);
+
+  return {
+    type: SignatureSetType.aggregate,
+    pubkeys: participantIndices.map((i) => epochCtx.index2pubkey[i]),
+    signingRoot: computeSigningRoot(ssz.Root, rootSigned, domain),
+    signature,
+  };
 }

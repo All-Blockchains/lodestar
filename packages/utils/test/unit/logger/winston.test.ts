@@ -1,10 +1,10 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
+import {Writable} from "node:stream";
 import rimraf from "rimraf";
-import {Writable} from "stream";
 import {expect} from "chai";
-import {Context, LodestarError, LogFormat, logFormats, LogLevel, sleep, WinstonLogger} from "../../../src";
-import {TransportType} from "../../../src/logger/transport";
+import {LogData, LodestarError, LogFormat, logFormats, LogLevel, WinstonLogger} from "../../../src/index.js";
+import {TransportType} from "../../../src/logger/transport.js";
 
 /**
  * To capture Winston output in memory
@@ -25,7 +25,7 @@ describe("winston logger", () => {
     interface ITestCase {
       id: string;
       message: string;
-      context?: Context;
+      context?: LogData;
       error?: Error;
       output: {[P in LogFormat]: string};
     }
@@ -61,7 +61,7 @@ describe("winston logger", () => {
           message: "foo bar",
           error: error,
           output: {
-            human: `[]                 \u001b[33mwarn\u001b[39m: foo bar code=SAMPLE_ERROR, data={"foo":"bar"}\n${error.stack}`,
+            human: `[]                 \u001b[33mwarn\u001b[39m: foo bar code=SAMPLE_ERROR, data=foo=bar\n${error.stack}`,
             // eslint-disable-next-line quotes
             json: `{"module":"","error":{"code":"SAMPLE_ERROR","data":{"foo":"bar"},"stack":"$STACK"},"level":"warn","message":"foo bar"}`,
           },
@@ -81,22 +81,6 @@ describe("winston logger", () => {
         });
       }
     }
-  });
-
-  describe("profile", () => {
-    it("should log profile", async () => {
-      const stream = new WritableMemory();
-      const logger = new WinstonLogger({hideTimestamp: true, module: "A"}, [{type: TransportType.stream, stream}]);
-
-      logger.profile("test");
-      await sleep(10);
-      // Stop profile of 'test'. Logging will now take place:
-      // '2021-03-31 20:47:09 []                 info: test  - duration=10ms'
-      logger.profile("test");
-
-      // Do not include the time since it can vary
-      expect(stream.getAsString().trim()).to.include("\u001b[32minfo\u001b[39m: test  - duration=");
-    });
   });
 
   describe("child logger", () => {
@@ -148,15 +132,17 @@ describe("winston logger", () => {
   });
 });
 
-/** Wait for file to exist and return its contents */
+/** Wait for file to exist have some content, then return its contents */
 async function readFileWhenExists(filepath: string): Promise<string> {
   for (let i = 0; i < 200; i++) {
-    await new Promise((r) => setTimeout(r, 10));
     try {
-      return fs.readFileSync(filepath, "utf8").trim();
+      const data = fs.readFileSync(filepath, "utf8").trim();
+      // Winston will first create the file then write to it
+      if (data) return data;
     } catch (e) {
       if ((e as IoError).code !== "ENOENT") throw e;
     }
+    await new Promise((r) => setTimeout(r, 10));
   }
   throw Error("Timeout");
 }

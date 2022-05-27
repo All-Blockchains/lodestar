@@ -1,175 +1,154 @@
 import {expect} from "chai";
-import {SecretKey} from "@chainsafe/bls";
-import {createIBeaconConfig} from "@chainsafe/lodestar-config";
-import {params as minimalParams} from "@chainsafe/lodestar-params/minimal";
+import {EPOCHS_PER_SYNC_COMMITTEE_PERIOD, SLOTS_PER_EPOCH} from "@chainsafe/lodestar-params";
+import {BeaconStateAllForks, BeaconStateAltair} from "@chainsafe/lodestar-beacon-state-transition";
+import {phase0, ssz} from "@chainsafe/lodestar-types";
+import {routes, Api} from "@chainsafe/lodestar-api";
+import {chainConfig as chainConfigDef} from "@chainsafe/lodestar-config/default";
+import {createIBeaconConfig, IChainConfig} from "@chainsafe/lodestar-config";
 import {toHexString} from "@chainsafe/ssz";
-import {WinstonLogger} from "@chainsafe/lodestar-utils";
-import {altair, Root, Slot, SyncPeriod} from "@chainsafe/lodestar-types";
-import {computeSyncPeriodAtSlot} from "@chainsafe/lodestar-beacon-state-transition";
-import {LightclientMockServer} from "../lightclientMockServer";
-import {processLightClientUpdate} from "../../src/client/update";
-import {LightClientStoreFast} from "../../src/client/types";
-import {Lightclient} from "../../src/client";
-import {ServerOpts} from "../lightclientApiServer";
-import {IClock} from "../../src/utils/clock";
-import {generateBalances, generateValidators, getInteropSyncCommittee} from "../utils";
+import {Lightclient, LightclientEvent} from "../../src/index.js";
+import {EventsServerApi, LightclientServerApi, ServerOpts, startServer} from "../lightclientApiServer.js";
+import {
+  computeLightclientUpdate,
+  computeLightClientSnapshot,
+  getInteropSyncCommittee,
+  testLogger,
+  committeeUpdateToLatestHeadUpdate,
+  committeeUpdateToLatestFinalizedHeadUpdate,
+  lastInMap,
+} from "../utils.js";
 
-/* eslint-disable @typescript-eslint/naming-convention */
+const SOME_HASH = Buffer.alloc(32, 0xff);
 
-describe("Lightclient flow with LightClientUpdater", () => {
-  const config = createIBeaconConfig({
-    ...minimalParams,
-    SYNC_COMMITTEE_SIZE: 4,
-    SYNC_PUBKEYS_PER_AGGREGATE: 2,
-    EPOCHS_PER_SYNC_COMMITTEE_PERIOD: 4, // Must be higher than 3 to allow finalized updates
-    SLOTS_PER_EPOCH: 4,
+describe("Lightclient sync", () => {
+  const afterEachCbs: (() => Promise<unknown> | unknown)[] = [];
+  afterEach(async () => {
+    await Promise.all(afterEachCbs);
+    afterEachCbs.length = 0;
   });
 
-  let lightclientServer: LightclientMockServer;
-  let genesisStateRoot: Root;
-  let genesisValidatorsRoot: Root;
+  it("Sync lightclient and track head", async () => {
+    const SECONDS_PER_SLOT = 2;
+    const ALTAIR_FORK_EPOCH = 0;
 
-  // Create blocks and state
-  const fromSlot = 1;
-  const toSlot = 50;
-  const validatorCount = 4;
+    const initialPeriod = 0;
+    const targetPeriod = 5;
+    const slotsIntoPeriod = 8;
+    const firstHeadSlot = targetPeriod * EPOCHS_PER_SYNC_COMMITTEE_PERIOD * SLOTS_PER_EPOCH;
+    const targetSlot = firstHeadSlot + slotsIntoPeriod;
 
-  // Compute all periods until toSlot
-  const lastPeriod = computeSyncPeriodAtSlot(config, toSlot);
-  const periods = Array.from({length: lastPeriod + 1}, (_, i) => i);
+    // Genesis data such that targetSlot is at the current clock slot
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    const chainConfig: IChainConfig = {...chainConfigDef, SECONDS_PER_SLOT, ALTAIR_FORK_EPOCH};
+    const genesisTime = Math.floor(Date.now() / 1000) - chainConfig.SECONDS_PER_SLOT * targetSlot;
+    const genesisValidatorsRoot = Buffer.alloc(32, 0xaa);
+    const config = createIBeaconConfig(chainConfig, genesisValidatorsRoot);
 
-  const serverOpts: ServerOpts = {port: 31000, host: "0.0.0.0"};
-  const beaconApiUrl = `http://${serverOpts.host}:${serverOpts.port}`;
+    // Create server impl mock backed
+    const lightclientServerApi = new LightclientServerApi();
+    const eventsServerApi = new EventsServerApi();
+    // Start server
+    const opts: ServerOpts = {host: "127.0.0.1", port: 15000};
+    const server = await startServer(opts, config, ({
+      lightclient: lightclientServerApi,
+      events: eventsServerApi,
+    } as Partial<Api>) as Api);
+    afterEachCbs.push(() => server.close());
 
-  before("BLS sanity check", () => {
-    const sk = SecretKey.fromBytes(Buffer.alloc(32, 1));
-    expect(sk.toPublicKey().toHex()).to.equal(
-      "0xaa1a1c26055a329817a5759d877a2795f9499b97d6056edde0eea39512f24e8bc874b4471f0501127abb1ea0d9f68ac1"
+    // Populate initial snapshot
+    const {snapshot, checkpointRoot} = computeLightClientSnapshot(initialPeriod);
+    lightclientServerApi.snapshots.set(toHexString(checkpointRoot), snapshot);
+
+    // Populate sync committee updates
+    for (let period = initialPeriod; period <= targetPeriod; period++) {
+      const committeeUpdate = computeLightclientUpdate(config, period);
+      lightclientServerApi.updates.set(period, committeeUpdate);
+    }
+
+    // So the first call to getLatestHeadUpdate() doesn't error, store the latest snapshot as latest header update
+    lightclientServerApi.latestHeadUpdate = committeeUpdateToLatestHeadUpdate(lastInMap(lightclientServerApi.updates));
+    lightclientServerApi.finalized = committeeUpdateToLatestFinalizedHeadUpdate(
+      lastInMap(lightclientServerApi.updates)
     );
-  });
 
-  const afterCallbacks: (() => Promise<void> | void)[] = [];
-  after(async () => {
-    while (afterCallbacks.length > 0) {
-      const callback = afterCallbacks.pop();
-      if (callback) await callback();
-    }
-  });
+    // Initilize from snapshot
+    const lightclient = await Lightclient.initializeFromCheckpointRoot({
+      config,
+      logger: testLogger,
+      beaconApiUrl: `http://${opts.host}:${opts.port}`,
+      genesisData: {genesisTime, genesisValidatorsRoot},
+      checkpointRoot: checkpointRoot,
+    });
+    afterEachCbs.push(() => lightclient.stop());
 
-  it("Run LightclientMockServer for a few periods", async () => {
-    // Create genesis state and block
-    const genesisState = config.types.altair.BeaconState.defaultTreeBacked();
-    const genesisBlock = config.types.altair.BeaconBlock.defaultValue();
-    genesisState.validators = generateValidators(validatorCount);
-    genesisState.balances = generateBalances(validatorCount);
-    genesisState.currentSyncCommittee = getInteropSyncCommittee(config, 0).syncCommittee;
-    genesisState.nextSyncCommittee = getInteropSyncCommittee(config, 1).syncCommittee;
-    genesisValidatorsRoot = config.types.altair.BeaconState.fields["validators"].hashTreeRoot(genesisState.validators);
-    genesisStateRoot = config.types.altair.BeaconState.hashTreeRoot(genesisState);
-    genesisBlock.stateRoot = genesisStateRoot;
-    const genesisCheckpoint: altair.Checkpoint = {
-      root: config.types.altair.BeaconBlock.hashTreeRoot(genesisBlock),
-      epoch: 0,
-    };
-
-    // TEMP log genesis for lightclient client
-    console.log({
-      genesisStateRoot: toHexString(genesisStateRoot),
-      genesisValidatorsRoot: toHexString(genesisValidatorsRoot),
+    // Sync periods to current
+    await new Promise<void>((resolve) => {
+      lightclient.emitter.on(LightclientEvent.committee, (updatePeriod) => {
+        if (updatePeriod === targetPeriod) {
+          resolve();
+        }
+      });
+      lightclient.start();
     });
 
-    const logger = new WinstonLogger();
-    lightclientServer = new LightclientMockServer(config, logger, genesisValidatorsRoot, {
-      block: genesisBlock,
-      state: genesisState,
-      checkpoint: genesisCheckpoint,
-    });
-
-    for (let slot = fromSlot; slot <= toSlot; slot++) {
-      lightclientServer.createNewBlock(slot);
+    // Wait for lightclient to subscribe to header updates
+    while (!eventsServerApi.hasSubscriptions()) {
+      await new Promise((r) => setTimeout(r, 10));
     }
 
-    // Check the current state of updates
-    const lightClientUpdater = lightclientServer["lightClientUpdater"];
-    const bestUpdates = await lightClientUpdater.getBestUpdates(periods);
-    const latestFinalizedUpdate = await lightClientUpdater.getLatestUpdateFinalized();
-    const latestNonFinalizedUpdate = await lightClientUpdater.getLatestUpdateNonFinalized();
+    // Test fetching a proof
+    // First create a state with some known data
+    const executionStateRoot = Buffer.alloc(32, 0xee);
+    const state = ssz.bellatrix.BeaconState.defaultViewDU();
+    state.latestExecutionPayloadHeader.stateRoot = executionStateRoot;
 
-    expect({
-      bestUpdates: bestUpdates.map((u) => u.header.slot),
-      latestFinalizedUpdate: latestFinalizedUpdate?.header.slot,
-      latestNonFinalizedUpdate: latestNonFinalizedUpdate?.header.slot,
-    }).to.deep.equal({
-      bestUpdates: [4, 20, 36, 49],
-      latestFinalizedUpdate: 36,
-      latestNonFinalizedUpdate: 49,
-    });
+    // Track head + reference states with some known data
+    const syncCommittee = getInteropSyncCommittee(targetPeriod);
+    await new Promise<void>((resolve) => {
+      lightclient.emitter.on(LightclientEvent.head, (header) => {
+        if (header.slot === targetSlot) {
+          resolve();
+        }
+      });
 
-    // Start API server
+      for (let slot = firstHeadSlot; slot <= targetSlot; slot++) {
+        // Make each stateRoot unique
+        state.slot = slot;
+        const stateRoot = state.hashTreeRoot();
 
-    await lightclientServer.startApiServer(serverOpts);
-    afterCallbacks.push(() => lightclientServer.stopApiServer());
-  });
+        // Provide the state to the lightclient server impl. Only the last one to test proof fetching
+        if (slot === targetSlot) {
+          lightclientServerApi.states.set(toHexString(stateRoot), (state as BeaconStateAllForks) as BeaconStateAltair);
+        }
 
-  it("Simulate a Lightclient syncing to latest update with these updates in memory", async () => {
-    const store: LightClientStoreFast = {
-      bestUpdates: new Map<SyncPeriod, altair.LightClientUpdate>(),
-      snapshot: {
-        header: config.types.altair.BeaconBlockHeader.defaultValue(),
-        currentSyncCommittee: lightclientServer["getSyncCommittee"](0).syncCommitteeFast,
-        nextSyncCommittee: lightclientServer["getSyncCommittee"](1).syncCommitteeFast,
-      },
-    };
+        // Emit a new head update with the custom state root
+        const header: phase0.BeaconBlockHeader = {
+          slot,
+          proposerIndex: 0,
+          parentRoot: SOME_HASH,
+          stateRoot: stateRoot,
+          bodyRoot: SOME_HASH,
+        };
 
-    const bestUpdates = await lightclientServer["lightClientUpdater"].getBestUpdates(periods);
-    for (const [i, update] of bestUpdates.entries()) {
-      try {
-        processLightClientUpdate(config, store, update, toSlot, genesisValidatorsRoot);
-      } catch (e) {
-        (e as Error).message = `Error processing update ${i}: ${(e as Error).message}`;
-        throw e;
+        const headUpdate: routes.lightclient.LightclientHeaderUpdate = {
+          attestedHeader: header,
+          syncAggregate: syncCommittee.signHeader(config, header),
+        };
+
+        lightclientServerApi.latestHeadUpdate = headUpdate;
+        eventsServerApi.emit({type: routes.events.EventType.lightclientHeaderUpdate, message: headUpdate});
       }
-    }
+    });
 
-    expect(store.snapshot.header.slot).to.equal(36, "Wrong store.snapshot.header.slot after applying updates");
-  });
+    // Ensure that the lightclient head is correct
+    expect(lightclient.getHead().slot).to.equal(targetSlot, "lightclient.head is not the targetSlot head");
 
-  it("Simulate a second lightclient syncing over the API from trusted snapshot", async () => {
-    const clock = new MockClock(toSlot);
-    const snapshot: altair.LightClientSnapshot = {
-      header: config.types.altair.BeaconBlockHeader.defaultValue(),
-      currentSyncCommittee: lightclientServer["getSyncCommittee"](0).syncCommittee,
-      nextSyncCommittee: lightclientServer["getSyncCommittee"](1).syncCommittee,
-    };
-    const lightclient = Lightclient.initializeFromTrustedSnapshot(
-      {config, clock, genesisValidatorsRoot, beaconApiUrl},
-      snapshot
+    // Fetch proof of "latestExecutionPayloadHeader.stateRoot"
+    const {proof, header} = await lightclient.getHeadStateProof([["latestExecutionPayloadHeader", "stateRoot"]]);
+    const recoveredState = ssz.bellatrix.BeaconState.createFromProof(proof, header.stateRoot);
+    expect(toHexString(recoveredState.latestExecutionPayloadHeader.stateRoot)).to.equal(
+      toHexString(executionStateRoot),
+      "Recovered executionStateRoot from getHeadStateProof() not correct"
     );
-
-    await lightclient.sync();
-
-    expect(lightclient.getHeader().slot).to.equal(36, "Wrong store.snapshot.header.slot after applying updates");
-  });
-
-  it("Simulate a second lightclient syncing over the API from trusted stateRoot", async () => {
-    const clock = new MockClock(toSlot);
-    const lightclient = await Lightclient.initializeFromTrustedStateRoot(
-      {config, clock, genesisValidatorsRoot, beaconApiUrl},
-      {stateRoot: genesisStateRoot, slot: 0}
-    );
-
-    await lightclient.sync();
-
-    expect(lightclient.getHeader().slot).to.equal(36, "Wrong store.snapshot.header.slot after applying updates");
   });
 });
-
-class MockClock implements IClock {
-  constructor(readonly currentSlot: Slot) {}
-  start(): void {
-    //
-  }
-  runEverySlot(): void {
-    //
-  }
-}

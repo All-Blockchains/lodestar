@@ -1,18 +1,12 @@
-import {PublicKey} from "@chainsafe/bls";
-import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {altair, Root} from "@chainsafe/lodestar-types";
+import bls from "@chainsafe/bls";
+import type {PublicKey} from "@chainsafe/bls/types";
+import {altair, Root, ssz} from "@chainsafe/lodestar-types";
 import {BeaconBlockHeader} from "@chainsafe/lodestar-types/phase0";
-import {ArrayLike, BitVector} from "@chainsafe/ssz";
-import {SyncCommitteeFast} from "../client/types";
+import {BitArray} from "@chainsafe/ssz";
+import {SyncCommitteeFast} from "../types.js";
 
-export function sumBits(bits: ArrayLike<boolean>): number {
-  let sum = 0;
-  for (const bit of bits) {
-    if (bit) {
-      sum++;
-    }
-  }
-  return sum;
+export function sumBits(bits: BitArray): number {
+  return bits.getTrueBitIndexes().length;
 }
 
 export function isZeroHash(root: Root): boolean {
@@ -24,7 +18,7 @@ export function isZeroHash(root: Root): boolean {
   return true;
 }
 
-export function assertZeroHashes(rootArray: ArrayLike<Root>, expectedLength: number, errorMessage: string): void {
+export function assertZeroHashes(rootArray: Root[], expectedLength: number, errorMessage: string): void {
   if (rootArray.length !== expectedLength) {
     throw Error(`Wrong length ${errorMessage}`);
   }
@@ -39,30 +33,23 @@ export function assertZeroHashes(rootArray: ArrayLike<Root>, expectedLength: num
 /**
  * Util to guarantee that all bits have a corresponding pubkey
  */
-export function getParticipantPubkeys<T>(pubkeys: ArrayLike<T>, bits: BitVector): T[] {
-  const participantPubkeys: T[] = [];
-  for (let i = 0; i < bits.length; i++) {
-    if (bits[i]) {
-      if (!pubkeys[i]) throw Error(`No pubkey ${i} in syncCommittee`);
-      participantPubkeys.push(pubkeys[i]);
-    }
-  }
-
-  return participantPubkeys;
+export function getParticipantPubkeys<T>(pubkeys: T[], bits: BitArray): T[] {
+  // BitArray.intersectValues() checks the length is correct
+  return bits.intersectValues(pubkeys);
 }
 
-export function toBlockHeader(config: IBeaconConfig, block: altair.BeaconBlock): BeaconBlockHeader {
+export function toBlockHeader(block: altair.BeaconBlock): BeaconBlockHeader {
   return {
     slot: block.slot,
     proposerIndex: block.proposerIndex,
     parentRoot: block.parentRoot,
     stateRoot: block.stateRoot,
-    bodyRoot: config.types.altair.BeaconBlockBody.hashTreeRoot(block.body),
+    bodyRoot: ssz.altair.BeaconBlockBody.hashTreeRoot(block.body),
   };
 }
 
 function deserializePubkeys(pubkeys: altair.LightClientUpdate["nextSyncCommittee"]["pubkeys"]): PublicKey[] {
-  return Array.from(pubkeys).map((pk) => PublicKey.fromBytes(pk.valueOf() as Uint8Array));
+  return Array.from(pubkeys).map((pk) => bls.PublicKey.fromBytes(pk));
 }
 
 function serializePubkeys(pubkeys: PublicKey[]): altair.LightClientUpdate["nextSyncCommittee"]["pubkeys"] {
@@ -72,23 +59,18 @@ function serializePubkeys(pubkeys: PublicKey[]): altair.LightClientUpdate["nextS
 export function deserializeSyncCommittee(syncCommittee: altair.SyncCommittee): SyncCommitteeFast {
   return {
     pubkeys: deserializePubkeys(syncCommittee.pubkeys),
-    pubkeyAggregates: deserializePubkeys(syncCommittee.pubkeyAggregates),
+    aggregatePubkey: bls.PublicKey.fromBytes(syncCommittee.aggregatePubkey),
   };
 }
 
 export function serializeSyncCommittee(syncCommittee: SyncCommitteeFast): altair.SyncCommittee {
   return {
     pubkeys: serializePubkeys(syncCommittee.pubkeys),
-    pubkeyAggregates: serializePubkeys(syncCommittee.pubkeyAggregates),
+    aggregatePubkey: syncCommittee.aggregatePubkey.toBytes(),
   };
 }
 
-export function isEmptyHeader(config: IBeaconConfig, header: BeaconBlockHeader): boolean {
-  const emptyValue = config.types.altair.BeaconBlockHeader.defaultValue();
-  return config.types.altair.BeaconBlockHeader.equals(emptyValue, header);
-}
-
-export function isEmptySyncCommitte(config: IBeaconConfig, syncCommittee: altair.SyncCommittee): boolean {
-  const emptyValue = config.types.altair.SyncCommittee.defaultValue();
-  return config.types.altair.SyncCommittee.equals(emptyValue, syncCommittee);
+export function isEmptyHeader(header: BeaconBlockHeader): boolean {
+  const emptyValue = ssz.phase0.BeaconBlockHeader.defaultValue();
+  return ssz.phase0.BeaconBlockHeader.equals(emptyValue, header);
 }

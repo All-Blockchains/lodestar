@@ -1,25 +1,30 @@
-import {CachedBeaconState, prepareEpochProcessState} from "../../allForks/util";
-import {processJustificationAndFinalization, processRegistryUpdates} from "../../allForks/epoch";
-import {processRewardsAndPenalties} from "./processRewardsAndPenalties";
-import {processSlashings} from "./processSlashings";
-import {processFinalUpdates} from "./processFinalUpdates";
-import {getAttestationDeltas} from "./getAttestationDeltas";
-import {allForks, phase0} from "@chainsafe/lodestar-types";
-
-export {
+import {CachedBeaconStatePhase0, EpochProcess} from "../../types.js";
+import {
   processJustificationAndFinalization,
-  processRewardsAndPenalties,
   processRegistryUpdates,
-  processSlashings,
-  processFinalUpdates,
-  getAttestationDeltas,
-};
+  processEth1DataReset,
+  processEffectiveBalanceUpdates,
+  processSlashingsReset,
+  processRandaoMixesReset,
+  processHistoricalRootsUpdate,
+} from "../../allForks/epoch/index.js";
+import {processRewardsAndPenalties} from "./processRewardsAndPenalties.js";
+import {processSlashings} from "./processSlashings.js";
+import {getAttestationDeltas} from "./getAttestationDeltas.js";
+import {processParticipationRecordUpdates} from "./processParticipationRecordUpdates.js";
 
-export function processEpoch(state: CachedBeaconState<phase0.BeaconState>): void {
-  const process = prepareEpochProcessState(state);
-  processJustificationAndFinalization(state as CachedBeaconState<allForks.BeaconState>, process);
-  processRewardsAndPenalties(state, process);
-  processRegistryUpdates(state as CachedBeaconState<allForks.BeaconState>, process);
-  processSlashings(state, process);
-  processFinalUpdates(state, process);
+export {processRewardsAndPenalties, processSlashings, getAttestationDeltas, processParticipationRecordUpdates};
+
+export function processEpoch(state: CachedBeaconStatePhase0, epochProcess: EpochProcess): void {
+  processJustificationAndFinalization(state, epochProcess);
+  processRewardsAndPenalties(state, epochProcess);
+  processRegistryUpdates(state, epochProcess);
+  processSlashings(state, epochProcess);
+  // inline processFinalUpdates() to follow altair and for clarity
+  processEth1DataReset(state, epochProcess);
+  processEffectiveBalanceUpdates(state, epochProcess);
+  processSlashingsReset(state, epochProcess);
+  processRandaoMixesReset(state, epochProcess);
+  processHistoricalRootsUpdate(state, epochProcess);
+  processParticipationRecordUpdates(state);
 }

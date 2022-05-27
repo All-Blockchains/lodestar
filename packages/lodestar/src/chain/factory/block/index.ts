@@ -2,41 +2,54 @@
  * @module chain/blockAssembly
  */
 
-import {CachedBeaconState, phase0} from "@chainsafe/lodestar-beacon-state-transition";
-import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {Bytes96, Root, Slot} from "@chainsafe/lodestar-types";
-import {ZERO_HASH} from "../../../constants";
-import {IBeaconDb} from "../../../db";
-import {IEth1ForBlockProduction} from "../../../eth1";
-import {IMetrics} from "../../../metrics";
-import {IBeaconChain} from "../../interface";
-import {assembleBody} from "./body";
+import {CachedBeaconStateAllForks, allForks} from "@chainsafe/lodestar-beacon-state-transition";
+import {Bytes32, Bytes96, Root, Slot} from "@chainsafe/lodestar-types";
+import {fromHexString} from "@chainsafe/ssz";
+
+import {ZERO_HASH} from "../../../constants/index.js";
+import {IMetrics} from "../../../metrics/index.js";
+import {IBeaconChain} from "../../interface.js";
+import {RegenCaller} from "../../regen/index.js";
+import {assembleBody} from "./body.js";
 
 type AssembleBlockModules = {
-  config: IBeaconConfig;
   chain: IBeaconChain;
-  db: IBeaconDb;
-  eth1: IEth1ForBlockProduction;
   metrics: IMetrics | null;
 };
 
 export async function assembleBlock(
-  {config, chain, db, eth1, metrics}: AssembleBlockModules,
-  slot: Slot,
-  randaoReveal: Bytes96,
-  graffiti = ZERO_HASH
-): Promise<phase0.BeaconBlock> {
-  const head = chain.forkChoice.getHead();
-  const state = await chain.regen.getBlockSlotState(head.blockRoot, slot);
-
-  const block: phase0.BeaconBlock = {
+  {chain, metrics}: AssembleBlockModules,
+  {
+    randaoReveal,
+    graffiti,
     slot,
-    proposerIndex: state.getBeaconProposer(slot),
-    parentRoot: head.blockRoot,
+  }: {
+    randaoReveal: Bytes96;
+    graffiti: Bytes32;
+    slot: Slot;
+  }
+): Promise<allForks.BeaconBlock> {
+  const head = chain.forkChoice.getHead();
+  const state = await chain.regen.getBlockSlotState(head.blockRoot, slot, RegenCaller.produceBlock);
+  const parentBlockRoot = fromHexString(head.blockRoot);
+  const proposerIndex = state.epochCtx.getBeaconProposer(slot);
+
+  const block: allForks.BeaconBlock = {
+    slot,
+    proposerIndex,
+    parentRoot: parentBlockRoot,
     stateRoot: ZERO_HASH,
-    body: await assembleBody(config, db, eth1, state as CachedBeaconState<phase0.BeaconState>, randaoReveal, graffiti),
+    body: await assembleBody(chain, state, {
+      randaoReveal,
+      graffiti,
+      blockSlot: slot,
+      parentSlot: slot - 1,
+      parentBlockRoot,
+      proposerIndex,
+    }),
   };
-  block.stateRoot = computeNewStateRoot({config, metrics}, state as CachedBeaconState<phase0.BeaconState>, block);
+
+  block.stateRoot = computeNewStateRoot({metrics}, state, block);
 
   return block;
 }
@@ -47,13 +60,13 @@ export async function assembleBlock(
  * epoch transition which happen at slot % 32 === 0)
  */
 function computeNewStateRoot(
-  {config, metrics}: {config: IBeaconConfig; metrics: IMetrics | null},
-  state: CachedBeaconState<phase0.BeaconState>,
-  block: phase0.BeaconBlock
+  {metrics}: {metrics: IMetrics | null},
+  state: CachedBeaconStateAllForks,
+  block: allForks.BeaconBlock
 ): Root {
   const postState = state.clone();
   // verifySignatures = false since the data to assemble the block is trusted
-  phase0.processBlock(postState, block, false, metrics);
+  allForks.processBlock(postState, block, {verifySignatures: false}, metrics);
 
-  return config.types.phase0.BeaconState.hashTreeRoot(postState);
+  return postState.hashTreeRoot();
 }

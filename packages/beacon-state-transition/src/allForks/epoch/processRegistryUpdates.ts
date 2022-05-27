@@ -1,43 +1,53 @@
-import {allForks} from "@chainsafe/lodestar-types";
-import {computeActivationExitEpoch} from "../../util";
-import {IEpochProcess, CachedBeaconState} from "../util";
+import {computeActivationExitEpoch} from "../../util/index.js";
+import {initiateValidatorExit} from "../block/index.js";
+import {EpochProcess, CachedBeaconStateAllForks} from "../../types.js";
 
-export function processRegistryUpdates(state: CachedBeaconState<allForks.BeaconState>, process: IEpochProcess): void {
-  const {config, validators, epochCtx} = state;
-  let exitEnd = process.exitQueueEnd;
-  let endChurn = process.exitQueueEndChurn;
-  const {MIN_VALIDATOR_WITHDRAWABILITY_DELAY} = config.params;
+/**
+ * Update validator registry for validators that activate + exit
+ *
+ * PERF: Cost 'proportional' to only validators that active + exit. For mainnet conditions:
+ * - indicesEligibleForActivationQueue: Maxing deposits triggers 512 validator mutations
+ * - indicesEligibleForActivation: 4 per epoch
+ * - indicesToEject: Potentially the entire validator set. On a massive offline event this could trigger many mutations
+ *   per epoch. Note that once mutated that validator can't be added to indicesToEject.
+ *
+ * - On normal mainnet conditions only 4 validators will be updated
+ *   - indicesEligibleForActivation: ~4000
+ *   - indicesEligibleForActivationQueue: 0
+ *   - indicesToEject: 0
+ */
+export function processRegistryUpdates(state: CachedBeaconStateAllForks, epochProcess: EpochProcess): void {
+  const {epochCtx} = state;
+
+  // Get the validators sub tree once for all the loop
+  const validators = state.validators;
+
+  // TODO: Batch set this properties in the tree at once with setMany() or setNodes()
+
   // process ejections
-  for (const index of process.indicesToEject) {
+  for (const index of epochProcess.indicesToEject) {
     // set validator exit epoch and withdrawable epoch
-    validators.update(index, {
-      exitEpoch: exitEnd,
-      withdrawableEpoch: exitEnd + MIN_VALIDATOR_WITHDRAWABILITY_DELAY,
-    });
-
-    endChurn += 1;
-    if (endChurn >= process.churnLimit) {
-      endChurn = 0;
-      exitEnd += 1;
-    }
+    // TODO: Figure out a way to quickly set properties on the validators tree
+    initiateValidatorExit(state, validators.get(index));
   }
 
   // set new activation eligibilities
-  for (const index of process.indicesToSetActivationEligibility) {
-    validators.update(index, {
-      activationEligibilityEpoch: epochCtx.currentShuffling.epoch + 1,
-    });
+  for (const index of epochProcess.indicesEligibleForActivationQueue) {
+    validators.get(index).activationEligibilityEpoch = epochCtx.currentShuffling.epoch + 1;
   }
 
   const finalityEpoch = state.finalizedCheckpoint.epoch;
   // dequeue validators for activation up to churn limit
-  for (const index of process.indicesToMaybeActivate.slice(0, process.churnLimit)) {
+  for (const index of epochProcess.indicesEligibleForActivation.slice(0, epochCtx.churnLimit)) {
+    const validator = validators.get(index);
     // placement in queue is finalized
-    if (process.validators[index].activationEligibilityEpoch > finalityEpoch) {
-      break; // remaining validators all have an activationEligibilityEpoch that is higher anyway, break early
+    if (validator.activationEligibilityEpoch > finalityEpoch) {
+      // remaining validators all have an activationEligibilityEpoch that is higher anyway, break early
+      // activationEligibilityEpoch has been sorted in epoch process in ascending order.
+      // At that point the finalityEpoch was not known because processJustificationAndFinalization() wasn't called yet.
+      // So we need to filter by finalityEpoch here to comply with the spec.
+      break;
     }
-    validators.update(index, {
-      activationEpoch: computeActivationExitEpoch(config, process.currentEpoch),
-    });
+    validator.activationEpoch = computeActivationExitEpoch(epochProcess.currentEpoch);
   }
 }

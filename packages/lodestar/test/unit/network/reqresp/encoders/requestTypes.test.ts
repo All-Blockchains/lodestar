@@ -1,13 +1,12 @@
 import chai, {expect} from "chai";
 import chaiAsPromised from "chai-as-promised";
 import pipe from "it-pipe";
-import {config} from "@chainsafe/lodestar-config/minimal";
 import {phase0} from "@chainsafe/lodestar-types";
-import {Method, Encoding, getRequestSzzTypeByMethod, RequestBody} from "../../../../../src/network/reqresp/types";
-import {requestEncode} from "../../../../../src/network/reqresp/encoders/requestEncode";
-import {requestDecode} from "../../../../../src/network/reqresp/encoders/requestDecode";
-import {isEqualSszType} from "../../../../utils/ssz";
-import {createStatus, generateRoots} from "../utils";
+import {Method, Encoding, getRequestSzzTypeByMethod, RequestBody} from "../../../../../src/network/reqresp/types.js";
+import {requestEncode} from "../../../../../src/network/reqresp/encoders/requestEncode.js";
+import {requestDecode} from "../../../../../src/network/reqresp/encoders/requestDecode.js";
+import {isEqualSszType} from "../../../../utils/ssz.js";
+import {createStatus, generateRoots} from "../utils.js";
 
 chai.use(chaiAsPromised);
 
@@ -42,11 +41,11 @@ describe("network / reqresp / encoders / request - types", () => {
       for (const [i, request] of requests.entries()) {
         it(`${encoding} ${method} - req ${i}`, async () => {
           const returnedRequest = await pipe(
-            requestEncode(config, {method, encoding}, request),
-            requestDecode(config, {method, encoding})
+            requestEncode({method, encoding}, request),
+            requestDecode({method, encoding})
           );
 
-          const type = getRequestSzzTypeByMethod(config, method);
+          const type = getRequestSzzTypeByMethod(method);
           if (!type) throw Error("no type");
 
           expect(isEqualSszType(type, returnedRequest, request)).to.equal(

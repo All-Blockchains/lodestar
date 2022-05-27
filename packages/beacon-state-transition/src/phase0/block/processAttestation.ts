@@ -1,19 +1,67 @@
-import {allForks, phase0} from "@chainsafe/lodestar-types";
+import {phase0, ssz} from "@chainsafe/lodestar-types";
 
-import {computeEpochAtSlot} from "../../util";
-import {CachedBeaconState} from "../../allForks/util";
-import {isValidIndexedAttestation} from "../../allForks/block";
+import {MIN_ATTESTATION_INCLUSION_DELAY, SLOTS_PER_EPOCH} from "@chainsafe/lodestar-params";
+import {toHexString} from "@chainsafe/ssz";
+import {computeEpochAtSlot} from "../../util/index.js";
+import {CachedBeaconStatePhase0, CachedBeaconStateAllForks} from "../../types.js";
+import {isValidIndexedAttestation} from "../../allForks/block/index.js";
 
+/**
+ * Process an Attestation operation. Validates an attestation and appends it to state.currentEpochAttestations or
+ * state.previousEpochAttestations to be processed in bulk at the epoch transition.
+ *
+ * PERF: Work depends on number of Attestation per block. On mainnet the average is 89.7 / block, with 87.8 participant
+ * true bits on average. See `packages/beacon-state-transition/test/perf/analyzeBlocks.ts`
+ */
 export function processAttestation(
-  state: CachedBeaconState<phase0.BeaconState>,
+  state: CachedBeaconStatePhase0,
   attestation: phase0.Attestation,
   verifySignature = true
 ): void {
-  const {config, epochCtx} = state;
-  const {MIN_ATTESTATION_INCLUSION_DELAY, SLOTS_PER_EPOCH} = config.params;
+  const {epochCtx} = state;
   const slot = state.slot;
   const data = attestation.data;
-  const committeeCount = epochCtx.getCommitteeCountAtSlot(data.slot);
+
+  validateAttestation(state, attestation);
+
+  const pendingAttestation = ssz.phase0.PendingAttestation.toViewDU({
+    data: data,
+    aggregationBits: attestation.aggregationBits,
+    inclusionDelay: slot - data.slot,
+    proposerIndex: epochCtx.getBeaconProposer(slot),
+  });
+
+  if (data.target.epoch === epochCtx.currentShuffling.epoch) {
+    if (!ssz.phase0.Checkpoint.equals(data.source, state.currentJustifiedCheckpoint)) {
+      throw new Error(
+        `Attestation source does not equal current justified checkpoint: source=${checkpointToStr(
+          data.source
+        )} currentJustifiedCheckpoint=${checkpointToStr(state.currentJustifiedCheckpoint)}`
+      );
+    }
+    state.currentEpochAttestations.push(pendingAttestation);
+  } else {
+    if (!ssz.phase0.Checkpoint.equals(data.source, state.previousJustifiedCheckpoint)) {
+      throw new Error(
+        `Attestation source does not equal previous justified checkpoint: source=${checkpointToStr(
+          data.source
+        )} previousJustifiedCheckpoint=${checkpointToStr(state.previousJustifiedCheckpoint)}`
+      );
+    }
+    state.previousEpochAttestations.push(pendingAttestation);
+  }
+
+  if (!isValidIndexedAttestation(state, epochCtx.getIndexedAttestation(attestation), verifySignature)) {
+    throw new Error("Attestation is not valid");
+  }
+}
+
+export function validateAttestation(state: CachedBeaconStateAllForks, attestation: phase0.Attestation): void {
+  const {epochCtx} = state;
+  const slot = state.slot;
+  const data = attestation.data;
+  const computedEpoch = computeEpochAtSlot(data.slot);
+  const committeeCount = epochCtx.getCommitteeCountPerSlot(computedEpoch);
   if (!(data.index < committeeCount)) {
     throw new Error(
       "Attestation committee index not within current committee count: " +
@@ -28,7 +76,6 @@ export function processAttestation(
         `targetEpoch=${data.target.epoch} currentEpoch=${epochCtx.currentShuffling.epoch}`
     );
   }
-  const computedEpoch = computeEpochAtSlot(config, data.slot);
   if (!(data.target.epoch === computedEpoch)) {
     throw new Error(
       "Attestation target epoch does not match epoch computed from slot: " +
@@ -43,47 +90,14 @@ export function processAttestation(
   }
 
   const committee = epochCtx.getBeaconCommittee(data.slot, data.index);
-  if (attestation.aggregationBits.length !== committee.length) {
+  if (attestation.aggregationBits.bitLen !== committee.length) {
     throw new Error(
       "Attestation aggregation bits length does not match committee length: " +
-        `aggregationBitsLength=${attestation.aggregationBits.length} committeeLength=${committee.length}`
+        `aggregationBitsLength=${attestation.aggregationBits.bitLen} committeeLength=${committee.length}`
     );
   }
+}
 
-  const pendingAttestation = state.config.types.phase0.PendingAttestation.createTreeBackedFromStruct({
-    data: data,
-    aggregationBits: attestation.aggregationBits,
-    inclusionDelay: slot - data.slot,
-    proposerIndex: epochCtx.getBeaconProposer(slot),
-  });
-
-  if (data.target.epoch === epochCtx.currentShuffling.epoch) {
-    if (!config.types.phase0.Checkpoint.equals(data.source, state.currentJustifiedCheckpoint)) {
-      throw new Error(
-        "Attestation source does not equal current justified checkpoint: " +
-          `source=${config.types.phase0.Checkpoint.toJson(data.source)} ` +
-          `currentJustifiedCheckpoint=${config.types.phase0.Checkpoint.toJson(state.currentJustifiedCheckpoint)}`
-      );
-    }
-    state.currentEpochAttestations.push(pendingAttestation);
-  } else {
-    if (!config.types.phase0.Checkpoint.equals(data.source, state.previousJustifiedCheckpoint)) {
-      throw new Error(
-        "Attestation source does not equal previous justified checkpoint: " +
-          `source=${config.types.phase0.Checkpoint.toJson(data.source)} ` +
-          `previousJustifiedCheckpoint=${config.types.phase0.Checkpoint.toJson(state.previousJustifiedCheckpoint)}`
-      );
-    }
-    state.previousEpochAttestations.push(pendingAttestation);
-  }
-
-  if (
-    !isValidIndexedAttestation(
-      state as CachedBeaconState<allForks.BeaconState>,
-      epochCtx.getIndexedAttestation(attestation),
-      verifySignature
-    )
-  ) {
-    throw new Error("Attestation is not valid");
-  }
+export function checkpointToStr(checkpoint: phase0.Checkpoint): string {
+  return `${toHexString(checkpoint.root)}:${checkpoint.epoch}`;
 }

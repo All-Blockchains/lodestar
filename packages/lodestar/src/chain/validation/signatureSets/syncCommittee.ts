@@ -1,25 +1,22 @@
-import {allForks, altair} from "@chainsafe/lodestar-types";
+import {DOMAIN_SYNC_COMMITTEE} from "@chainsafe/lodestar-params";
+import {altair, ssz} from "@chainsafe/lodestar-types";
 import {
-  CachedBeaconState,
-  computeEpochAtSlot,
+  CachedBeaconStateAllForks,
   computeSigningRoot,
-  getDomain,
   ISignatureSet,
   SignatureSetType,
 } from "@chainsafe/lodestar-beacon-state-transition";
 
 export function getSyncCommitteeSignatureSet(
-  state: CachedBeaconState<allForks.BeaconState>,
-  syncCommittee: altair.SyncCommitteeSignature
+  state: CachedBeaconStateAllForks,
+  syncCommittee: altair.SyncCommitteeMessage
 ): ISignatureSet {
-  const {config} = state;
-  const msgEpoch = computeEpochAtSlot(config, syncCommittee.slot);
-  const domain = getDomain(config, state, config.params.DOMAIN_SYNC_COMMITTEE, msgEpoch);
+  const domain = state.config.getDomain(DOMAIN_SYNC_COMMITTEE, syncCommittee.slot);
 
   return {
     type: SignatureSetType.single,
     pubkey: state.epochCtx.index2pubkey[syncCommittee.validatorIndex],
-    signingRoot: computeSigningRoot(config, config.types.phase0.Root, syncCommittee.beaconBlockRoot, domain),
-    signature: syncCommittee.signature.valueOf() as Uint8Array,
+    signingRoot: computeSigningRoot(ssz.Root, syncCommittee.beaconBlockRoot, domain),
+    signature: syncCommittee.signature,
   };
 }

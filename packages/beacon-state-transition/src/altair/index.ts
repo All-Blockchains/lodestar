@@ -1,18 +1,13 @@
-// fast
-export * from "./block";
-export * from "./epoch";
-export * from "./slot";
-// naive
-export * as naive from "../naive/altair";
-export * from "./state_accessor";
-export * from "./state_mutators";
+export * from "./block/index.js";
+export * from "./epoch/index.js";
+export * from "./upgradeState.js";
 
-// re-export phase0 lodestar types for ergonomic usage downstream
+// re-export altair lodestar types for ergonomic usage downstream
 // eg:
 //
 // import {altair} from "@chainsafe/lodestar-beacon-state-transition";
 //
-// altair.processDeposit(...)
+// altair.processSyncAggregate(...)
 //
 // const x: altair.BeaconState;
 export * from "@chainsafe/lodestar-types/altair";

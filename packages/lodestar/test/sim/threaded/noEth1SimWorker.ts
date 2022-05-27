@@ -2,34 +2,26 @@
 // NOTE: @typescript*no-unsafe* rules are disabled above because `workerData` is typed as `any`
 import {parentPort, workerData} from "worker_threads";
 
-import {init} from "@chainsafe/bls";
-import {phase0} from "@chainsafe/lodestar-types";
+import {Multiaddr} from "multiaddr";
+import {createFromPrivKey} from "peer-id";
+import {phase0, ssz} from "@chainsafe/lodestar-types";
 
-import {getDevBeaconNode} from "../../utils/node/beacon";
-import {getAndInitDevValidators} from "../../utils/node/validator";
-import {testLogger, LogLevel, TestLoggerOpts} from "../../utils/logger";
-import {connect} from "../../utils/network";
-import {Network} from "../../../src/network";
-import {NodeWorkerOptions, Message} from "./types";
-import Multiaddr from "multiaddr";
 import {sleep, TimestampFormatCode, withTimeout} from "@chainsafe/lodestar-utils";
 import {fromHexString} from "@chainsafe/ssz";
-import {createFromPrivKey} from "peer-id";
-import {simTestInfoTracker} from "../../utils/node/simTest";
+import {SLOTS_PER_EPOCH} from "@chainsafe/lodestar-params";
+import {getDevBeaconNode} from "../../utils/node/beacon.js";
+import {getAndInitDevValidators} from "../../utils/node/validator.js";
+import {testLogger, LogLevel, TestLoggerOpts} from "../../utils/logger.js";
+import {connect} from "../../utils/network.js";
+import {Network} from "../../../src/network/index.js";
+import {simTestInfoTracker} from "../../utils/node/simTest.js";
+import {NodeWorkerOptions, Message} from "./types.js";
 
 /* eslint-disable no-console */
 
 async function runWorker(): Promise<void> {
   const parent = parentPort;
   if (!parent) throw Error("Must be run in worker_thread");
-
-  // blst Native bindings do work in multi-thread now but sometimes they randomnly fail on Github Actions runners when stopping the test
-  // ```
-  // Segmentation fault (core dumped)
-  // error Command failed with exit code 139.
-  // ```
-  // Since we really need stability in tests we will use herumi until this test fails <1% of times on GA runners
-  await init("herumi");
 
   const options = workerData.options as NodeWorkerOptions;
   const {nodeIndex, validatorsPerNode, startIndex, checkpointEvent, logFile, nodes} = options;
@@ -40,7 +32,7 @@ async function runWorker(): Promise<void> {
     timestampFormat: {
       format: TimestampFormatCode.EpochSlot,
       genesisTime: options.genesisTime,
-      slotsPerEpoch: options.params.SLOTS_PER_EPOCH,
+      slotsPerEpoch: SLOTS_PER_EPOCH,
       secondsPerSlot: options.params.SECONDS_PER_SLOT,
     },
   };
@@ -48,7 +40,7 @@ async function runWorker(): Promise<void> {
   loggerNode.info("Thread started", {
     now: Math.floor(Date.now() / 1000),
     genesisTime: options.genesisTime,
-    localMultiaddrs: options.options.network?.localMultiaddrs || [],
+    localMultiaddrs: (options.options.network?.localMultiaddrs || []).join(","),
   });
 
   const node = await getDevBeaconNode({
@@ -71,7 +63,7 @@ async function runWorker(): Promise<void> {
       nodes.map(async (nodeToConnect, i) => {
         if (i === nodeIndex) return; // Don't dial self
         loggerNode.info(`Connecting node ${nodeIndex} -> ${i}`);
-        const multiaddrs = nodeToConnect.localMultiaddrs.map(Multiaddr);
+        const multiaddrs = nodeToConnect.localMultiaddrs.map((s) => new Multiaddr(s));
         const peerIdToConn = await createFromPrivKey(fromHexString(nodeToConnect.peerIdPrivkey));
         await withTimeout(() => connect(node.network as Network, peerIdToConn, multiaddrs), 10 * 1000);
         loggerNode.info(`Connected node ${nodeIndex} -> ${i}`);
@@ -85,11 +77,11 @@ async function runWorker(): Promise<void> {
     await node.close();
     parent.postMessage({
       event: checkpointEvent,
-      checkpoint: node.config.types.phase0.Checkpoint.toJson(checkpoint as phase0.Checkpoint),
+      checkpoint: ssz.phase0.Checkpoint.toJson(checkpoint as phase0.Checkpoint),
     } as Message);
   });
 
-  const validators = await getAndInitDevValidators({
+  const {validators} = await getAndInitDevValidators({
     node,
     validatorClientCount: 1,
     validatorsPerClient: validatorsPerNode,
@@ -99,7 +91,7 @@ async function runWorker(): Promise<void> {
   await Promise.all(validators.map((validator) => validator.start()));
 }
 
-runWorker().catch((e) => {
+runWorker().catch((e: Error) => {
   console.error("Worker error", e);
   process.exit(1);
 });

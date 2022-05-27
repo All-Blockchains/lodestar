@@ -1,20 +1,21 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import {Connection} from "libp2p";
-import {INodeApi} from "../../../../../src/api/impl/node";
-import {NodeApi} from "../../../../../src/api/impl/node/node";
 import sinon, {SinonStubbedInstance} from "sinon";
-import {createPeerId, INetwork, Network} from "../../../../../src/network";
-import {BeaconSync, IBeaconSync} from "../../../../../src/sync";
-import {createKeypairFromPeerId, ENR} from "@chainsafe/discv5/lib";
 import PeerId from "peer-id";
 import {expect, use} from "chai";
 import chaiAsPromised from "chai-as-promised";
-import Multiaddr from "multiaddr";
-import {MetadataController} from "../../../../../src/network/metadata";
-import {phase0} from "@chainsafe/lodestar-types";
-import {NodePeer} from "../../../../../src/api/types";
-import {PeerStatus, PeerDirection} from "../../../../../src/network";
+import {Multiaddr} from "multiaddr";
+import {BitArray} from "@chainsafe/ssz";
+import {createKeypairFromPeerId, ENR} from "@chainsafe/discv5";
+import {altair} from "@chainsafe/lodestar-types";
+import {routes} from "@chainsafe/lodestar-api";
+import {createPeerId, INetwork, Network} from "../../../../../src/network/index.js";
+import {BeaconSync, IBeaconSync} from "../../../../../src/sync/index.js";
+import {MetadataController} from "../../../../../src/network/metadata.js";
+import {defaultApiOptions} from "../../../../../src/api/options.js";
+import {PeerStatus, PeerDirection} from "../../../../../src/network/index.js";
+import {getNodeApi} from "../../../../../src/api/impl/node/index.js";
 
 use(chaiAsPromised);
 
@@ -25,7 +26,7 @@ interface IPeerSummary {
   hasP2pAddress: boolean;
 }
 
-const toPeerSummary = (peer: NodePeer): IPeerSummary => {
+const toPeerSummary = (peer: routes.node.NodePeer): IPeerSummary => {
   return {
     direction: peer.direction,
     state: peer.state,
@@ -35,7 +36,7 @@ const toPeerSummary = (peer: NodePeer): IPeerSummary => {
 };
 
 describe("node api implementation", function () {
-  let api: INodeApi;
+  let api: ReturnType<typeof getNodeApi>;
   let networkStub: SinonStubbedInstance<INetwork>;
   let syncStub: SinonStubbedInstance<IBeaconSync>;
   let peerId: PeerId;
@@ -43,27 +44,28 @@ describe("node api implementation", function () {
   beforeEach(async function () {
     networkStub = sinon.createStubInstance(Network);
     syncStub = sinon.createStubInstance(BeaconSync);
-    api = new NodeApi({}, {network: networkStub, sync: syncStub});
+    api = getNodeApi(defaultApiOptions, {network: networkStub, sync: syncStub});
     peerId = await PeerId.create({keyType: "secp256k1"});
     sinon.stub(networkStub, "peerId").get(() => peerId);
     sinon.stub(networkStub, "localMultiaddrs").get(() => [new Multiaddr("/ip4/127.0.0.1/tcp/36000")]);
   });
 
-  describe("getNodeIdentity", function () {
+  describe("getNetworkIdentity", function () {
     it("should get node identity", async function () {
       const keypair = createKeypairFromPeerId(peerId);
       const enr = ENR.createV4(keypair.publicKey);
       enr.setLocationMultiaddr(new Multiaddr("/ip4/127.0.0.1/tcp/36001"));
       networkStub.getEnr.returns(enr);
       networkStub.metadata = {
-        get allPhase0(): phase0.Metadata {
+        get json(): altair.Metadata {
           return {
-            attnets: [true],
+            attnets: BitArray.fromBoolArray([true]),
+            syncnets: BitArray.fromBitLen(0),
             seqNumber: BigInt(1),
           };
         },
       } as MetadataController;
-      const identity = await api.getNodeIdentity();
+      const {data: identity} = await api.getNetworkIdentity();
       expect(identity.peerId.startsWith("16")).to.be.true;
       expect(identity.enr.startsWith("enr:-")).to.be.true;
       expect(identity.discoveryAddresses.length).to.equal(1);
@@ -74,23 +76,50 @@ describe("node api implementation", function () {
     });
 
     it("should get node identity - no enr", async function () {
-      networkStub.getEnr.returns(null!);
-      const identity = await api.getNodeIdentity();
+      networkStub.getEnr.returns((null as unknown) as ENR);
+      const {data: identity} = await api.getNetworkIdentity();
       expect(identity.enr).equal("");
     });
   });
 
-  describe("getNodeStatus", function () {
-    it("syncing", async function () {
-      syncStub.isSynced.returns(false);
-      const status = await api.getNodeStatus();
-      expect(status).to.equal("syncing");
+  describe("getPeerCount", function () {
+    let peer1: PeerId, peer2: PeerId, peer3: PeerId;
+
+    before(async function () {
+      peer1 = await createPeerId();
+      peer2 = await createPeerId();
+      peer3 = await createPeerId();
     });
 
-    it("ready", async function () {
-      syncStub.isSynced.resolves(true);
-      const status = await api.getNodeStatus();
-      expect(status).to.equal("ready");
+    it("it should return peer count", async function () {
+      const connectionsByPeer = new Map<string, Connection[]>([
+        [peer1.toB58String(), [libp2pConnection(peer1, "open", "outbound")]],
+        [
+          peer2.toB58String(),
+          [libp2pConnection(peer2, "closing", "inbound"), libp2pConnection(peer2, "closing", "inbound")],
+        ],
+        [
+          peer3.toB58String(),
+          [
+            libp2pConnection(peer3, "closed", "inbound"),
+            libp2pConnection(peer3, "closed", "inbound"),
+            libp2pConnection(peer3, "closed", "inbound"),
+          ],
+        ],
+      ]);
+
+      networkStub.getConnectionsByPeer.returns(connectionsByPeer);
+
+      const {data: count} = await api.getPeerCount();
+      expect(count).to.be.deep.equal(
+        {
+          connected: 1,
+          disconnecting: 1, // picks most relevant connection to count
+          disconnected: 1, // picks most relevant connection to count
+          connecting: 0,
+        },
+        "getPeerCount incorrect"
+      );
     });
   });
 
@@ -109,7 +138,7 @@ describe("node api implementation", function () {
       ]);
       networkStub.getConnectionsByPeer.returns(connectionsByPeer);
 
-      const peers = await api.getPeers();
+      const {data: peers} = await api.getPeers();
       expect(peers.length).to.equal(2);
       expect(peers.map(toPeerSummary)).to.be.deep.equal([
         {direction: "outbound", state: "connected", hasP2pAddress: true, hasPeerId: true},
@@ -124,7 +153,7 @@ describe("node api implementation", function () {
       ]);
       networkStub.getConnectionsByPeer.returns(connectionsByPeer);
 
-      const peers = await api.getPeers();
+      const {data: peers} = await api.getPeers();
       // expect(peers[0].enr).not.empty;
       expect(peers.map(toPeerSummary)).to.be.deep.equal([
         {direction: "outbound", state: "disconnected", hasPeerId: true, hasP2pAddress: true},
@@ -143,8 +172,8 @@ describe("node api implementation", function () {
       ]);
       networkStub.getConnectionsByPeer.returns(connectionsByPeer);
 
-      const peer = await api.getPeer(peer1.toB58String());
-      if (!peer) throw Error("getPeer returned no peer");
+      const {data: peer} = await api.getPeer(peer1.toB58String());
+      if (peer === undefined) throw Error("getPeer returned no peer");
       expect(peer.peerId).to.equal(peer1.toB58String());
       expect(peer.lastSeenP2pAddress).not.empty;
       expect(peer.peerId).not.empty;
@@ -160,22 +189,10 @@ describe("node api implementation", function () {
     });
   });
 
-  describe("getSyncStatus", function () {
-    it("success", async function () {
-      syncStub.getSyncStatus.resolves({
-        headSlot: BigInt(2),
-        syncDistance: BigInt(1),
-      });
-      const syncStatus = await api.getSyncingStatus();
-      expect(syncStatus.headSlot.toString()).to.equal("2");
-      expect(syncStatus.syncDistance.toString()).to.equal("1");
-    });
-  });
-
   describe("getVersion", function () {
     it("success", async function () {
-      const version = await api.getVersion();
-      expect(version.startsWith("Lodestar")).to.be.true;
+      const {data} = await api.getNodeVersion();
+      expect(data.version.startsWith("Lodestar"), `data must start with 'Lodestar': ${data.version}`).to.be.true;
     });
   });
 });

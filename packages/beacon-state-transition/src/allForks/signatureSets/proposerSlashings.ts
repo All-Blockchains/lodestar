@@ -1,38 +1,39 @@
-import {readonlyValues} from "@chainsafe/ssz";
-import {allForks, phase0} from "@chainsafe/lodestar-types";
-import {computeEpochAtSlot, computeSigningRoot, getDomain, ISignatureSet, SignatureSetType} from "../../util";
-import {CachedBeaconState} from "../util";
+import {DOMAIN_BEACON_PROPOSER} from "@chainsafe/lodestar-params";
+import {allForks, phase0, ssz} from "@chainsafe/lodestar-types";
+import {computeSigningRoot, ISignatureSet, SignatureSetType} from "../../util/index.js";
+import {CachedBeaconStateAllForks} from "../../types.js";
 
 /**
  * Extract signatures to allow validating all block signatures at once
  */
 export function getProposerSlashingSignatureSets(
-  state: CachedBeaconState<allForks.BeaconState>,
+  state: CachedBeaconStateAllForks,
   proposerSlashing: phase0.ProposerSlashing
 ): ISignatureSet[] {
-  const {config, epochCtx} = state;
+  const {epochCtx} = state;
   const pubkey = epochCtx.index2pubkey[proposerSlashing.signedHeader1.message.proposerIndex];
 
+  // In state transition, ProposerSlashing headers are only partially validated. Their slot could be higher than the
+  // clock and the slashing would still be valid. Must use bigint variants to hash correctly to all possible values
   return [proposerSlashing.signedHeader1, proposerSlashing.signedHeader2].map(
     (signedHeader): ISignatureSet => {
-      const epoch = computeEpochAtSlot(config, signedHeader.message.slot);
-      const domain = getDomain(config, state, config.params.DOMAIN_BEACON_PROPOSER, epoch);
+      const domain = state.config.getDomain(DOMAIN_BEACON_PROPOSER, Number(signedHeader.message.slot as bigint));
 
       return {
         type: SignatureSetType.single,
         pubkey,
-        signingRoot: computeSigningRoot(config, config.types.phase0.BeaconBlockHeader, signedHeader.message, domain),
-        signature: signedHeader.signature.valueOf() as Uint8Array,
+        signingRoot: computeSigningRoot(ssz.phase0.BeaconBlockHeaderBigint, signedHeader.message, domain),
+        signature: signedHeader.signature,
       };
     }
   );
 }
 
 export function getProposerSlashingsSignatureSets(
-  state: CachedBeaconState<allForks.BeaconState>,
+  state: CachedBeaconStateAllForks,
   signedBlock: allForks.SignedBeaconBlock
 ): ISignatureSet[] {
-  return Array.from(readonlyValues(signedBlock.message.body.proposerSlashings), (proposerSlashing) =>
-    getProposerSlashingSignatureSets(state, proposerSlashing)
-  ).flat(1);
+  return signedBlock.message.body.proposerSlashings
+    .map((proposerSlashing) => getProposerSlashingSignatureSets(state, proposerSlashing))
+    .flat(1);
 }

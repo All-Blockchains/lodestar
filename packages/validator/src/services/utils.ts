@@ -1,34 +1,45 @@
-import {SecretKey} from "@chainsafe/bls";
-import {CommitteeIndex} from "@chainsafe/lodestar-types";
-import {toHexString} from "@chainsafe/ssz";
-import {PubkeyHex, BLSKeypair} from "../types";
-import {DutyAndProof} from "./attestationDuties";
+import {routes} from "@chainsafe/lodestar-api";
+import {CommitteeIndex, SubcommitteeIndex} from "@chainsafe/lodestar-types";
+import {AttDutyAndProof} from "./attestationDuties.js";
+import {SyncDutyAndProofs, SyncSelectionProof} from "./syncCommitteeDuties.js";
 
-export function mapSecretKeysToValidators(secretKeys: SecretKey[]): Map<PubkeyHex, BLSKeypair> {
-  const validators: Map<PubkeyHex, BLSKeypair> = new Map<PubkeyHex, BLSKeypair>();
-  for (const secretKey of secretKeys) {
-    const publicKey = secretKey.toPublicKey().toBytes();
-    validators.set(toHexString(publicKey), {publicKey, secretKey});
-  }
-  return validators;
-}
+/** Sync committee duty associated to a single sub committee subnet */
+export type SubcommitteeDuty = {
+  duty: routes.validator.SyncDuty;
+  selectionProof: SyncSelectionProof["selectionProof"];
+};
 
-export function getAggregationBits(committeeLength: number, validatorIndexInCommittee: number): boolean[] {
-  return Array.from({length: committeeLength}, (_, i) => i === validatorIndexInCommittee);
-}
-
-export function groupDutiesByCommitteeIndex(duties: DutyAndProof[]): Map<CommitteeIndex, DutyAndProof[]> {
-  const dutiesByCommitteeIndex = new Map<CommitteeIndex, DutyAndProof[]>();
+export function groupAttDutiesByCommitteeIndex(duties: AttDutyAndProof[]): Map<CommitteeIndex, AttDutyAndProof[]> {
+  const dutiesByCommitteeIndex = new Map<CommitteeIndex, AttDutyAndProof[]>();
 
   for (const dutyAndProof of duties) {
     const {committeeIndex} = dutyAndProof.duty;
-    const dutyAndProofArr = dutiesByCommitteeIndex.get(committeeIndex);
-    if (dutyAndProofArr) {
-      dutyAndProofArr.push(dutyAndProof);
-    } else {
-      dutiesByCommitteeIndex.set(committeeIndex, [dutyAndProof]);
+    let dutyAndProofArr = dutiesByCommitteeIndex.get(committeeIndex);
+    if (!dutyAndProofArr) {
+      dutyAndProofArr = [];
+      dutiesByCommitteeIndex.set(committeeIndex, dutyAndProofArr);
     }
+    dutyAndProofArr.push(dutyAndProof);
   }
 
   return dutiesByCommitteeIndex;
+}
+
+export function groupSyncDutiesBySubcommitteeIndex(
+  duties: SyncDutyAndProofs[]
+): Map<SubcommitteeIndex, SubcommitteeDuty[]> {
+  const dutiesBySubcommitteeIndex = new Map<SubcommitteeIndex, SubcommitteeDuty[]>();
+
+  for (const validatorDuty of duties) {
+    for (const {selectionProof, subcommitteeIndex} of validatorDuty.selectionProofs) {
+      let dutyAndProofArr = dutiesBySubcommitteeIndex.get(subcommitteeIndex);
+      if (!dutyAndProofArr) {
+        dutyAndProofArr = [];
+        dutiesBySubcommitteeIndex.set(subcommitteeIndex, dutyAndProofArr);
+      }
+      dutyAndProofArr.push({duty: validatorDuty.duty, selectionProof: selectionProof});
+    }
+  }
+
+  return dutiesBySubcommitteeIndex;
 }

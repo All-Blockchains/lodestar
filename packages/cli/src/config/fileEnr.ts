@@ -1,6 +1,6 @@
-import {createKeypairFromPeerId, ENR, ENRKey, ENRValue} from "@chainsafe/discv5";
-import {writeFileSync, readFileSync} from "fs";
 import PeerId from "peer-id";
+import {createKeypairFromPeerId, ENR, ENRKey, ENRValue} from "@chainsafe/discv5";
+import {writeFile, readFile} from "../util/index.js";
 
 /**
  * `FileENR` is an `ENR` that saves the ENR contents to a file on every modification
@@ -24,7 +24,7 @@ export class FileENR extends ENR {
   }
 
   static initFromFile(filename: string, peerId: PeerId): FileENR {
-    const enr = FileENR.decodeTxt(readFileSync(filename, "utf8")) as FileENR;
+    const enr = FileENR.decodeTxt(readFile(filename)) as FileENR;
     return this.initFromENR(filename, peerId, enr);
   }
   static initFromENR(filename: string, peerId: PeerId, enr: ENR): FileENR {
@@ -36,9 +36,9 @@ export class FileENR extends ENR {
   }
 
   saveToFile(): void {
-    if (!this.localPeerId) return;
+    if (this.localPeerId === null || this.localPeerId === undefined) return;
     const keypair = createKeypairFromPeerId(this.localPeerId);
-    writeFileSync(this.filename, this.encodeTxt(keypair.privateKey));
+    writeFile(this.filename, this.encodeTxt(keypair.privateKey));
   }
 
   set(key: ENRKey, value: ENRValue): this {

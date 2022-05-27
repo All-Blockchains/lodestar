@@ -1,26 +1,37 @@
-import {minimalConfig} from "@chainsafe/lodestar-config/minimal";
-import {CachedBeaconState, createCachedBeaconState, phase0} from "@chainsafe/lodestar-beacon-state-transition";
-import {List, TreeBacked} from "@chainsafe/ssz";
-import {allForks, altair, Gwei, Root} from "@chainsafe/lodestar-types";
-import {IBeaconConfig} from "@chainsafe/lodestar-config";
-import {FAR_FUTURE_EPOCH} from "@chainsafe/lodestar-params";
+import {config as minimalConfig} from "@chainsafe/lodestar-config/default";
+import {
+  BeaconStateAllForks,
+  CachedBeaconStateAllForks,
+  createCachedBeaconState,
+  phase0,
+  PubkeyIndexMap,
+} from "@chainsafe/lodestar-beacon-state-transition";
+import {BitArray} from "@chainsafe/ssz";
+import {allForks, altair, ssz} from "@chainsafe/lodestar-types";
+import {createIBeaconConfig} from "@chainsafe/lodestar-config";
+import {
+  EPOCHS_PER_HISTORICAL_VECTOR,
+  EPOCHS_PER_SLASHINGS_VECTOR,
+  FAR_FUTURE_EPOCH,
+  MAX_EFFECTIVE_BALANCE,
+  SLOTS_PER_HISTORICAL_ROOT,
+  SYNC_COMMITTEE_SIZE,
+} from "@chainsafe/lodestar-params";
 
-import {GENESIS_EPOCH, GENESIS_SLOT, ZERO_HASH} from "../../src/constants";
-import {generateEmptyBlock} from "./block";
-import {generateValidators} from "./validator";
+import bls from "@chainsafe/bls";
+import {GENESIS_EPOCH, GENESIS_SLOT, ZERO_HASH} from "../../src/constants/index.js";
+import {generateEmptyBlock} from "./block.js";
+import {generateValidator, generateValidators} from "./validator.js";
 
 /**
  * Copy of BeaconState, but all fields are marked optional to allow for swapping out variables as needed.
  */
 type TestBeaconState = Partial<allForks.BeaconState>;
 
-const phase0States = new Map<IBeaconConfig, TreeBacked<allForks.BeaconState>>();
-const altairStates = new Map<IBeaconConfig, TreeBacked<altair.BeaconState>>();
-
 /**
  * Generate beaconState, by default it will generate a mostly empty state with "just enough" to be valid-ish
  * NOTE: All fields can be overridden through `opts`.
- *  should allow 1st test calling generateState more time since TreeBacked<BeaconState>.createValue api is expensive.
+ *  should allow 1st test calling generateState more time since creating a new instance is expensive.
  *
  * @param {TestBeaconState} opts
  * @param config
@@ -29,15 +40,32 @@ const altairStates = new Map<IBeaconConfig, TreeBacked<altair.BeaconState>>();
 export function generateState(
   opts: TestBeaconState = {},
   config = minimalConfig,
-  isAltair = false
-): TreeBacked<allForks.BeaconState> {
+  isAltair = false,
+  withPubkey = false
+): BeaconStateAllForks {
+  const validatorOpts = {
+    activationEpoch: 0,
+    effectiveBalance: MAX_EFFECTIVE_BALANCE,
+    withdrawableEpoch: FAR_FUTURE_EPOCH,
+    exitEpoch: FAR_FUTURE_EPOCH,
+  };
+  const numValidators = 16;
+  const validators = withPubkey
+    ? Array.from({length: numValidators}, (_, i) => {
+        const sk = bls.SecretKey.fromBytes(Buffer.alloc(32, i + 1));
+        return generateValidator({
+          ...validatorOpts,
+          pubkey: sk.toPublicKey().toBytes(),
+        });
+      })
+    : generateValidators(numValidators, validatorOpts);
   const defaultState: phase0.BeaconState = {
     genesisTime: Math.floor(Date.now() / 1000),
     genesisValidatorsRoot: ZERO_HASH,
     slot: GENESIS_SLOT,
     fork: {
-      previousVersion: config.params.GENESIS_FORK_VERSION,
-      currentVersion: config.params.GENESIS_FORK_VERSION,
+      previousVersion: config.GENESIS_FORK_VERSION,
+      currentVersion: config.GENESIS_FORK_VERSION,
       epoch: GENESIS_EPOCH,
     },
     latestBlockHeader: {
@@ -45,30 +73,25 @@ export function generateState(
       proposerIndex: 0,
       parentRoot: Buffer.alloc(32),
       stateRoot: Buffer.alloc(32),
-      bodyRoot: config.types.phase0.BeaconBlockBody.hashTreeRoot(generateEmptyBlock().body),
+      bodyRoot: ssz.phase0.BeaconBlockBody.hashTreeRoot(generateEmptyBlock().body),
     },
-    blockRoots: Array.from({length: config.params.SLOTS_PER_HISTORICAL_ROOT}, () => ZERO_HASH),
-    stateRoots: Array.from({length: config.params.SLOTS_PER_HISTORICAL_ROOT}, () => ZERO_HASH),
-    historicalRoots: ([] as Root[]) as List<Root>,
+    blockRoots: Array.from({length: SLOTS_PER_HISTORICAL_ROOT}, () => ZERO_HASH),
+    stateRoots: Array.from({length: SLOTS_PER_HISTORICAL_ROOT}, () => ZERO_HASH),
+    historicalRoots: [],
     eth1Data: {
       depositRoot: Buffer.alloc(32),
       blockHash: Buffer.alloc(32),
       depositCount: 0,
     },
-    eth1DataVotes: ([] as phase0.Eth1Data[]) as List<phase0.Eth1Data>,
+    eth1DataVotes: [],
     eth1DepositIndex: 0,
-    validators: generateValidators(4, {
-      activationEpoch: 0,
-      effectiveBalance: config.params.MAX_EFFECTIVE_BALANCE,
-      withdrawableEpoch: FAR_FUTURE_EPOCH,
-      exitEpoch: FAR_FUTURE_EPOCH,
-    }),
-    balances: Array.from({length: 4}, () => config.params.MAX_EFFECTIVE_BALANCE) as List<Gwei>,
-    randaoMixes: Array.from({length: config.params.EPOCHS_PER_HISTORICAL_VECTOR}, () => ZERO_HASH),
-    slashings: Array.from({length: config.params.EPOCHS_PER_SLASHINGS_VECTOR}, () => BigInt(0)),
-    previousEpochAttestations: ([] as phase0.PendingAttestation[]) as List<phase0.PendingAttestation>,
-    currentEpochAttestations: ([] as phase0.PendingAttestation[]) as List<phase0.PendingAttestation>,
-    justificationBits: Array.from({length: 4}, () => false),
+    validators: validators,
+    balances: Array.from({length: numValidators}, () => MAX_EFFECTIVE_BALANCE),
+    randaoMixes: Array.from({length: EPOCHS_PER_HISTORICAL_VECTOR}, () => ZERO_HASH),
+    slashings: Array.from({length: EPOCHS_PER_SLASHINGS_VECTOR}, () => BigInt(0)),
+    previousEpochAttestations: [],
+    currentEpochAttestations: [],
+    justificationBits: BitArray.fromBitLen(4),
     previousJustifiedCheckpoint: {
       epoch: GENESIS_EPOCH,
       root: ZERO_HASH,
@@ -81,47 +104,55 @@ export function generateState(
       epoch: GENESIS_EPOCH,
       root: ZERO_HASH,
     },
+    ...opts,
   };
+
   if (isAltair) {
     const defaultAltairState: altair.BeaconState = {
-      ...config.types.altair.BeaconState.struct_defaultValue(),
+      ...ssz.altair.BeaconState.defaultValue(),
       ...defaultState,
+      previousEpochParticipation: [...[0xff, 0xff], ...Array.from({length: numValidators - 2}, () => 0)],
+      currentEpochParticipation: [...[0xff, 0xff], ...Array.from({length: numValidators - 2}, () => 0)],
+      currentSyncCommittee: {
+        pubkeys: Array.from({length: SYNC_COMMITTEE_SIZE}, (_, i) => validators[i % validators.length].pubkey),
+        aggregatePubkey: ssz.BLSPubkey.defaultValue(),
+      },
+      nextSyncCommittee: {
+        pubkeys: Array.from({length: SYNC_COMMITTEE_SIZE}, (_, i) => validators[i % validators.length].pubkey),
+        aggregatePubkey: ssz.BLSPubkey.defaultValue(),
+      },
     };
 
-    const state =
-      altairStates.get(config) ??
-      (config.types.altair.BeaconState.createTreeBackedFromStruct(defaultAltairState) as TreeBacked<
-        altair.BeaconState
-      >);
-    altairStates.set(config, state);
+    return ssz.altair.BeaconState.toViewDU(defaultAltairState);
   } else {
-    const state =
-      phase0States.get(config) ??
-      (config.types.phase0.BeaconState.createTreeBackedFromStruct(defaultState) as TreeBacked<allForks.BeaconState>);
-    phase0States.set(config, state);
+    return ssz.phase0.BeaconState.toViewDU(defaultState);
   }
-  const resultState = (isAltair ? altairStates.get(config)?.clone() : phase0States.get(config)?.clone()) as TreeBacked<
-    allForks.BeaconState
-  >;
-
-  // const state =
-  //   phase0States.get(config) ??
-  //   (config.types.phase0.BeaconState.createTreeBackedFromStruct(defaultState) as TreeBacked<allForks.BeaconState>);
-  // phase0States.set(config, state);
-  // const resultState = state.clone();
-
-  for (const key in opts) {
-    // @ts-ignore
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    resultState[key] = opts[key];
-  }
-  return resultState;
 }
 
+/**
+ * This generates state with default pubkey
+ */
 export function generateCachedState(
   opts: TestBeaconState = {},
   config = minimalConfig,
   isAltair = false
-): CachedBeaconState<allForks.BeaconState> {
-  return createCachedBeaconState(config, generateState(opts, config, isAltair));
+): CachedBeaconStateAllForks {
+  const state = generateState(opts, config, isAltair);
+  return createCachedBeaconState(state, {
+    config: createIBeaconConfig(config, state.genesisValidatorsRoot),
+    // This is a performance test, there's no need to have a global shared cache of keys
+    pubkey2index: new PubkeyIndexMap(),
+    index2pubkey: [],
+  });
+}
+
+/**
+ * This generates state with real pubkey
+ */
+export async function generateCachedStateWithPubkeys(
+  opts: TestBeaconState = {},
+  config = minimalConfig,
+  isAltair = false
+): Promise<CachedBeaconStateAllForks> {
+  return generateCachedState(opts, config, isAltair);
 }

@@ -1,16 +1,20 @@
-import {allForks} from "@chainsafe/lodestar-types";
+import {GENESIS_EPOCH} from "@chainsafe/lodestar-params";
+import {BitArray} from "@chainsafe/ssz";
+import {ssz} from "@chainsafe/lodestar-types";
+import {getBlockRoot} from "../../util/index.js";
+import {CachedBeaconStateAllForks, EpochProcess} from "../../types.js";
 
-import {GENESIS_EPOCH} from "../../constants";
-import {getBlockRoot} from "../../util";
-import {CachedBeaconState, IEpochProcess} from "../util";
-
+/**
+ * Update justified and finalized checkpoints depending on network participation.
+ *
+ * PERF: Very low (constant) cost. Persist small objects to the tree.
+ */
 export function processJustificationAndFinalization(
-  state: CachedBeaconState<allForks.BeaconState>,
-  process: IEpochProcess
+  state: CachedBeaconStateAllForks,
+  epochProcess: EpochProcess
 ): void {
-  const config = state.config;
-  const previousEpoch = process.prevEpoch;
-  const currentEpoch = process.currentEpoch;
+  const previousEpoch = epochProcess.prevEpoch;
+  const currentEpoch = epochProcess.currentEpoch;
 
   // Initial FFG checkpoint values have a `0x00` stub for `root`.
   // Skip FFG updates in the first two epochs to avoid corner cases that might result in modifying this stub.
@@ -23,27 +27,32 @@ export function processJustificationAndFinalization(
 
   // Process justifications
   state.previousJustifiedCheckpoint = state.currentJustifiedCheckpoint;
-  const bits = state.justificationBits;
+  const bits = state.justificationBits.toBoolArray();
+
+  // Rotate bits
   for (let i = bits.length - 1; i >= 1; i--) {
     bits[i] = bits[i - 1];
   }
   bits[0] = false;
 
-  if (process.prevEpochUnslashedStake.targetStake * BigInt(3) >= process.totalActiveStake * BigInt(2)) {
-    state.currentJustifiedCheckpoint = {
+  if (epochProcess.prevEpochUnslashedStake.targetStakeByIncrement * 3 >= epochProcess.totalActiveStakeByIncrement * 2) {
+    state.currentJustifiedCheckpoint = ssz.phase0.Checkpoint.toViewDU({
       epoch: previousEpoch,
-      root: getBlockRoot(config, state, previousEpoch),
-    };
+      root: getBlockRoot(state, previousEpoch),
+    });
     bits[1] = true;
   }
-  if (process.currEpochUnslashedTargetStake * BigInt(3) >= process.totalActiveStake * BigInt(2)) {
-    state.currentJustifiedCheckpoint = {
+  if (epochProcess.currEpochUnslashedTargetStakeByIncrement * 3 >= epochProcess.totalActiveStakeByIncrement * 2) {
+    state.currentJustifiedCheckpoint = ssz.phase0.Checkpoint.toViewDU({
       epoch: currentEpoch,
-      root: getBlockRoot(config, state, currentEpoch),
-    };
+      root: getBlockRoot(state, currentEpoch),
+    });
     bits[0] = true;
   }
-  state.justificationBits = bits;
+
+  state.justificationBits = ssz.phase0.JustificationBits.toViewDU(BitArray.fromBoolArray(bits));
+
+  // TODO: Consider rendering bits as array of boolean for faster repeated access here
 
   // Process finalizations
   // The 2nd/3rd/4th most recent epochs are all justified, the 2nd using the 4th as source

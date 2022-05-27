@@ -2,12 +2,16 @@
  * @module logger
  */
 
-import {createLogger, Logger} from "winston";
-import {Context, defaultLogLevel, ILogger, ILoggerOptions, LogLevel, logLevelNum} from "./interface";
+import {Writable} from "node:stream";
+import winston from "winston";
+import type {Logger} from "winston";
 import chalk from "chalk";
-import {getFormat} from "./format";
-import {Writable} from "stream";
-import {TransportOpts, TransportType, fromTransportOpts} from "./transport";
+import {defaultLogLevel, ILogger, ILoggerOptions, LogLevel, logLevelNum} from "./interface.js";
+import {getFormat} from "./format.js";
+import {TransportOpts, TransportType, fromTransportOpts} from "./transport.js";
+import {LogData} from "./json.js";
+
+const {createLogger} = winston;
 
 const defaultTransportOpts: TransportOpts = {type: TransportType.console};
 
@@ -33,7 +37,7 @@ export class WinstonLogger implements ILogger {
     this.winston = createLogger({
       level: options?.level || defaultLogLevel,
       defaultMeta: {module: options?.module || ""} as DefaultMeta,
-      format: getFormat(options || {}),
+      format: getFormat(options),
       transports: transportOptsArr.map((transportOpts) => fromTransportOpts(transportOpts)),
       exitOnError: false,
     });
@@ -43,31 +47,31 @@ export class WinstonLogger implements ILogger {
     this._transportOptsArr = transportOptsArr;
   }
 
-  error(message: string, context?: Context, error?: Error): void {
+  error(message: string, context?: LogData, error?: Error): void {
     this.createLogEntry(LogLevel.error, message, context, error);
   }
 
-  warn(message: string, context?: Context, error?: Error): void {
+  warn(message: string, context?: LogData, error?: Error): void {
     this.createLogEntry(LogLevel.warn, message, context, error);
   }
 
-  info(message: string, context?: Context, error?: Error): void {
+  info(message: string, context?: LogData, error?: Error): void {
     this.createLogEntry(LogLevel.info, message, context, error);
   }
 
-  important(message: string, context?: Context, error?: Error): void {
+  important(message: string, context?: LogData, error?: Error): void {
     this.createLogEntry(LogLevel.info, chalk.red(message), context, error);
   }
 
-  verbose(message: string, context?: Context, error?: Error): void {
+  verbose(message: string, context?: LogData, error?: Error): void {
     this.createLogEntry(LogLevel.verbose, message, context, error);
   }
 
-  debug(message: string, context?: Context, error?: Error): void {
+  debug(message: string, context?: LogData, error?: Error): void {
     this.createLogEntry(LogLevel.debug, message, context, error);
   }
 
-  silly(message: string, context?: Context, error?: Error): void {
+  silly(message: string, context?: LogData, error?: Error): void {
     this.createLogEntry(LogLevel.silly, message, context, error);
   }
 
@@ -85,7 +89,7 @@ export class WinstonLogger implements ILogger {
     return new WinstonLogger({...this._options, ...options}, this._transportOptsArr);
   }
 
-  private createLogEntry(level: LogLevel, message: string, context?: Context, error?: Error): void {
+  private createLogEntry(level: LogLevel, message: string, context?: LogData, error?: Error): void {
     // don't propagate if silenced or message level is more detailed than logger level
     if (logLevelNum[level] > logLevelNum[this._level]) {
       return;

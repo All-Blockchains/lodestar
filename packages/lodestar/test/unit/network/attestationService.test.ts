@@ -1,41 +1,43 @@
-import {allForks} from "@chainsafe/lodestar-types";
-import {ATTESTATION_SUBNET_COUNT} from "@chainsafe/lodestar-params";
-import {createIBeaconConfig, ForkName} from "@chainsafe/lodestar-config";
-import {params} from "@chainsafe/lodestar-params/minimal";
-import {getCurrentSlot} from "@chainsafe/lodestar-beacon-state-transition";
-import * as stateTransitionUtils from "@chainsafe/lodestar-beacon-state-transition/lib/util/attestation";
-import * as mathUtils from "@chainsafe/lodestar-utils/lib/math";
-import * as shuffleUtils from "../../../src/util/shuffle";
 import sinon, {SinonStubbedInstance} from "sinon";
-import {MockBeaconChain} from "../../utils/mocks/chain/chain";
-import {generateState} from "../../utils/state";
-import {TreeBacked} from "@chainsafe/ssz";
-import {testLogger} from "../../utils/logger";
 import {expect} from "chai";
-import {SinonStubFn} from "../../utils/types";
-import {MetadataController} from "../../../src/network/metadata";
-import {Eth2Gossipsub, GossipType} from "../../../src/network/gossip";
-import {getAttnetsService, CommitteeSubscription} from "../../../src/network/subnetsService";
-import {ChainEvent, IBeaconChain} from "../../../src/chain";
+import {
+  ATTESTATION_SUBNET_COUNT,
+  EPOCHS_PER_RANDOM_SUBNET_SUBSCRIPTION,
+  ForkName,
+  SLOTS_PER_EPOCH,
+} from "@chainsafe/lodestar-params";
+import {createIBeaconConfig} from "@chainsafe/lodestar-config";
+import {BeaconStateAllForks, getCurrentSlot} from "@chainsafe/lodestar-beacon-state-transition";
+import * as mathUtils from "@chainsafe/lodestar-utils";
+import * as shuffleUtils from "../../../src/util/shuffle.js";
+import {MockBeaconChain} from "../../utils/mocks/chain/chain.js";
+import {generateState} from "../../utils/state.js";
+import {testLogger} from "../../utils/logger.js";
+import {SinonStubFn} from "../../utils/types.js";
+import {MetadataController} from "../../../src/network/metadata.js";
+import {Eth2Gossipsub, GossipType} from "../../../src/network/gossip/index.js";
+import {AttnetsService, CommitteeSubscription} from "../../../src/network/subnets/index.js";
+import {ChainEvent, IBeaconChain} from "../../../src/chain/index.js";
+import {ZERO_HASH} from "../../../src/constants/index.js";
 
-describe("AttestationService", function () {
-  const {SLOTS_PER_EPOCH, SECONDS_PER_SLOT, EPOCHS_PER_RANDOM_SUBNET_SUBSCRIPTION} = params;
+// TODO remove stub
+describe.skip("AttnetsService", function () {
   const COMMITTEE_SUBNET_SUBSCRIPTION = 10;
-  const ALTAIR_FORK_EPOCH = 1 * params.EPOCHS_PER_RANDOM_SUBNET_SUBSCRIPTION;
+  const ALTAIR_FORK_EPOCH = 1 * EPOCHS_PER_RANDOM_SUBNET_SUBSCRIPTION;
   // eslint-disable-next-line @typescript-eslint/naming-convention
-  const config = createIBeaconConfig({...params, ALTAIR_FORK_EPOCH});
+  const config = createIBeaconConfig({ALTAIR_FORK_EPOCH}, ZERO_HASH);
+  const {SECONDS_PER_SLOT} = config;
 
-  let service: ReturnType<typeof getAttnetsService>;
+  let service: AttnetsService;
 
   const sandbox = sinon.createSandbox();
   // let clock: SinonFakeTimers;
-  let gossipStub: SinonStubbedInstance<Eth2Gossipsub>;
-  let computeSubnetUtil: SinonStubFn<typeof stateTransitionUtils["computeSubnetForCommitteesAtSlot"]>;
+  let gossipStub: SinonStubbedInstance<Eth2Gossipsub> & Eth2Gossipsub;
   let randomUtil: SinonStubFn<typeof mathUtils["randBetween"]>;
   let metadata: MetadataController;
 
   let chain: IBeaconChain;
-  let state: allForks.BeaconState;
+  let state: BeaconStateAllForks;
   const logger = testLogger();
   const subscription: CommitteeSubscription = {
     validatorIndex: 2021,
@@ -46,9 +48,7 @@ describe("AttestationService", function () {
 
   beforeEach(function () {
     sandbox.useFakeTimers(Date.now());
-    gossipStub = sandbox.createStubInstance(Eth2Gossipsub);
-    computeSubnetUtil = sandbox.stub(stateTransitionUtils, "computeSubnetForCommitteesAtSlot");
-    computeSubnetUtil.returns(COMMITTEE_SUBNET_SUBSCRIPTION);
+    gossipStub = sandbox.createStubInstance(Eth2Gossipsub) as SinonStubbedInstance<Eth2Gossipsub> & Eth2Gossipsub;
     randomUtil = sandbox.stub(mathUtils, "randBetween");
     randomUtil
       .withArgs(EPOCHS_PER_RANDOM_SUBNET_SUBSCRIPTION, 2 * EPOCHS_PER_RANDOM_SUBNET_SUBSCRIPTION)
@@ -64,19 +64,13 @@ describe("AttestationService", function () {
       genesisTime: Math.floor(Date.now() / 1000),
       chainId: 0,
       networkId: BigInt(0),
-      state: state as TreeBacked<allForks.BeaconState>,
+      state,
       config,
     });
     // load getCurrentSlot first, vscode not able to debug without this
     getCurrentSlot(config, Math.floor(Date.now() / 1000));
     metadata = new MetadataController({}, {config, chain, logger});
-    service = getAttnetsService({
-      config,
-      chain,
-      logger,
-      gossip: (gossipStub as unknown) as Eth2Gossipsub,
-      metadata,
-    });
+    service = new AttnetsService(config, chain, gossipStub, metadata, logger);
     service.start();
   });
 
@@ -134,17 +128,12 @@ describe("AttestationService", function () {
   });
 
   it("should prepare for a hard fork", async () => {
-    const altairEpoch = config.forks.altair.epoch;
     service.addCommitteeSubscriptions([subscription]);
-    // run every epoch (or any num slots < 150)
-    while (chain.clock.currentSlot < altairEpoch * SLOTS_PER_EPOCH) {
-      // avoid known validator expiry
-      service.addCommitteeSubscriptions([subscription]);
-      sandbox.clock.tick(SLOTS_PER_EPOCH * SECONDS_PER_SLOT * 1000);
-    }
+
+    // Run the pre-fork transition
+    service.subscribeSubnetsToNextFork(ForkName.altair);
 
     // Should have already subscribed to both forks
-
     const forkTransitionSubscribeCalls = gossipStub.subscribeTopic.getCalls().map((call) => call.args[0]);
     const subToPhase0 = forkTransitionSubscribeCalls.find((topic) => topic.fork === ForkName.phase0);
     const subToAltair = forkTransitionSubscribeCalls.find((topic) => topic.fork === ForkName.altair);
@@ -152,11 +141,7 @@ describe("AttestationService", function () {
     if (!subToAltair) throw Error("Must subscribe to one subnet on altair");
 
     // Advance through the fork transition so it un-subscribes from all phase0 subs
-
-    while (chain.clock.currentSlot * SLOTS_PER_EPOCH < altairEpoch + EPOCHS_PER_RANDOM_SUBNET_SUBSCRIPTION) {
-      service.addCommitteeSubscriptions([subscription]);
-      sandbox.clock.tick(SLOTS_PER_EPOCH * SECONDS_PER_SLOT * 1000);
-    }
+    service.unsubscribeSubnetsFromPrevFork(ForkName.phase0);
 
     const forkTransitionUnSubscribeCalls = gossipStub.unsubscribeTopic.getCalls().map((call) => call.args[0]);
     const unsubbedPhase0Subnets = new Set<number>();

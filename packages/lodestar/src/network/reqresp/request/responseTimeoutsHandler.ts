@@ -1,9 +1,9 @@
-import {AbortController} from "abort-controller";
 import pipe from "it-pipe";
-import {timeoutOptions} from "../../../constants";
-import {abortableSource} from "../../../util/abortableSource";
-import {onChunk} from "../utils";
-import {RequestErrorCode, RequestInternalError} from "./errors";
+import {AbortController} from "@chainsafe/abort-controller";
+import {timeoutOptions} from "../../../constants/index.js";
+import {abortableSource} from "../../../util/abortableSource.js";
+import {onChunk} from "../utils/index.js";
+import {RequestErrorCode, RequestInternalError} from "./errors.js";
 
 /** Returns the maximum total timeout possible for a response. See @responseTimeoutsHandler */
 export function maxTotalResponseTimeout(maxResponses = 1, options?: Partial<typeof timeoutOptions>): number {
@@ -20,7 +20,7 @@ export function responseTimeoutsHandler<T>(
   responseDecoder: (source: AsyncIterable<Buffer>) => AsyncGenerator<T>,
   options?: Partial<typeof timeoutOptions>
 ): (source: AsyncIterable<Buffer>) => AsyncGenerator<T> {
-  return async function* (source) {
+  return async function* responseTimeoutsHandlerTransform(source) {
     const {TTFB_TIMEOUT, RESP_TIMEOUT} = {...timeoutOptions, ...options};
 
     const ttfbTimeoutController = new AbortController();
@@ -68,7 +68,7 @@ export function responseTimeoutsHandler<T>(
       );
     } finally {
       clearTimeout(timeoutTTFB);
-      if (timeoutRESP) clearTimeout(timeoutRESP);
+      if (timeoutRESP !== null) clearTimeout(timeoutRESP);
     }
   };
 }

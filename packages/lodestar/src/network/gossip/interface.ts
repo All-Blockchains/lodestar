@@ -2,16 +2,17 @@
  * @module network/gossip
  */
 
-import {allForks, altair, phase0} from "@chainsafe/lodestar-types";
-import StrictEventEmitter from "strict-event-emitter-types";
 import {EventEmitter} from "events";
-import {IBeaconConfig, ForkName} from "@chainsafe/lodestar-config";
+import StrictEventEmitter from "strict-event-emitter-types";
 import LibP2p from "libp2p";
+import {GossipsubMessage, MessageAcceptance, PeerIdStr} from "libp2p-gossipsub/src/types";
+import {ForkName} from "@chainsafe/lodestar-params";
+import {allForks, altair, phase0} from "@chainsafe/lodestar-types";
+import {IBeaconConfig} from "@chainsafe/lodestar-config";
 import {ILogger} from "@chainsafe/lodestar-utils";
-import {InMessage} from "libp2p-interfaces/src/pubsub";
-import {IBeaconChain} from "../../chain";
-import {NetworkEvent} from "../events";
-import {IBeaconDb} from "../../db";
+import {IBeaconChain} from "../../chain/index.js";
+import {NetworkEvent} from "../events.js";
+import {JobItemQueue} from "../../util/queue/index.js";
 
 export enum GossipType {
   // phase0
@@ -27,7 +28,6 @@ export enum GossipType {
 }
 
 export enum GossipEncoding {
-  ssz = "ssz",
   ssz_snappy = "ssz_snappy",
 }
 
@@ -40,17 +40,21 @@ export interface IGossipTopic {
   encoding?: GossipEncoding;
 }
 
-export type GossipTopicMap = {
-  [GossipType.beacon_block]: IGossipTopic & {type: GossipType.beacon_block};
-  [GossipType.beacon_aggregate_and_proof]: IGossipTopic & {type: GossipType.beacon_aggregate_and_proof};
-  [GossipType.beacon_attestation]: IGossipTopic & {type: GossipType.beacon_attestation; subnet: number};
-  [GossipType.voluntary_exit]: IGossipTopic & {type: GossipType.voluntary_exit};
-  [GossipType.proposer_slashing]: IGossipTopic & {type: GossipType.proposer_slashing};
-  [GossipType.attester_slashing]: IGossipTopic & {type: GossipType.attester_slashing};
-  [GossipType.sync_committee_contribution_and_proof]: IGossipTopic & {
+export type GossipTopicTypeMap = {
+  [GossipType.beacon_block]: {type: GossipType.beacon_block};
+  [GossipType.beacon_aggregate_and_proof]: {type: GossipType.beacon_aggregate_and_proof};
+  [GossipType.beacon_attestation]: {type: GossipType.beacon_attestation; subnet: number};
+  [GossipType.voluntary_exit]: {type: GossipType.voluntary_exit};
+  [GossipType.proposer_slashing]: {type: GossipType.proposer_slashing};
+  [GossipType.attester_slashing]: {type: GossipType.attester_slashing};
+  [GossipType.sync_committee_contribution_and_proof]: {
     type: GossipType.sync_committee_contribution_and_proof;
   };
-  [GossipType.sync_committee]: IGossipTopic & {type: GossipType.sync_committee; subnet: number};
+  [GossipType.sync_committee]: {type: GossipType.sync_committee; subnet: number};
+};
+
+export type GossipTopicMap = {
+  [K in keyof GossipTopicTypeMap]: GossipTopicTypeMap[K] & IGossipTopic;
 };
 
 /**
@@ -66,7 +70,7 @@ export type GossipTypeMap = {
   [GossipType.proposer_slashing]: phase0.ProposerSlashing;
   [GossipType.attester_slashing]: phase0.AttesterSlashing;
   [GossipType.sync_committee_contribution_and_proof]: altair.SignedContributionAndProof;
-  [GossipType.sync_committee]: altair.SyncCommitteeSignature;
+  [GossipType.sync_committee]: altair.SyncCommitteeMessage;
 };
 
 export type GossipFnByType = {
@@ -79,13 +83,13 @@ export type GossipFnByType = {
   [GossipType.sync_committee_contribution_and_proof]: (
     signedContributionAndProof: altair.SignedContributionAndProof
   ) => Promise<void> | void;
-  [GossipType.sync_committee]: (syncCommittee: altair.SyncCommitteeSignature) => Promise<void> | void;
+  [GossipType.sync_committee]: (syncCommittee: altair.SyncCommitteeMessage) => Promise<void> | void;
 };
 
 export type GossipFn = GossipFnByType[keyof GossipFnByType];
 
 export interface IGossipEvents {
-  [topic: string]: GossipFn;
+  [topicStr: string]: GossipFn;
   [NetworkEvent.gossipHeartbeat]: () => void;
   [NetworkEvent.gossipStart]: () => void;
   [NetworkEvent.gossipStop]: () => void;
@@ -102,64 +106,43 @@ export interface IGossipModules {
 /**
  * Contains various methods for validation of incoming gossip topic data.
  * The conditions for valid gossip topics and how they are handled are specified here:
- * https://github.com/ethereum/eth2.0-specs/blob/dev/specs/phase0/p2p-interface.md#global-topics
+ * https://github.com/ethereum/consensus-specs/blob/v1.1.10/specs/phase0/p2p-interface.md#global-topics
  */
-
-export type GossipObject =
-  | allForks.SignedBeaconBlock
-  | phase0.SignedAggregateAndProof
-  | phase0.Attestation
-  | phase0.SignedVoluntaryExit
-  | phase0.ProposerSlashing
-  | phase0.AttesterSlashing
-  | altair.SignedContributionAndProof
-  | altair.SyncCommitteeSignature;
-
-export type GossipHandlerFn = (gossipObject: GossipObject) => Promise<void> | void;
-
-export type GossipSerializer = (obj: GossipObject) => Uint8Array;
-
-export type GossipDeserializer = (buf: Uint8Array) => GossipObject;
-
-export interface IObjectValidatorModules {
-  chain: IBeaconChain;
-  db: IBeaconDb;
-  config: IBeaconConfig;
-  logger: ILogger;
-}
 
 /**
  * Top-level type for gossip validation functions
  *
  * js-libp2p-gossipsub expects validation functions that look like this
  */
-export type TopicValidatorFn = (topic: string, message: InMessage) => Promise<void>;
+export type GossipValidatorFn = (
+  topic: GossipTopic,
+  msg: GossipsubMessage,
+  propagationSource: PeerIdStr,
+  seenTimestampSec: number
+) => Promise<MessageAcceptance>;
 
-/**
- * Map of TopicValidatorFn by topic string. What js-libp2p-gossipsub requires
- */
-export type TopicValidatorFnMap = Map<string, TopicValidatorFn>;
+export type ValidatorFnsByType = {[K in GossipType]: GossipValidatorFn};
 
-/**
- * Overridden `InMessage`
- *
- * Possibly includes cached msgId, uncompressed message data, deserialized data
- */
-export interface IGossipMessage extends InMessage {
-  /**
-   * Cached message id
-   */
-  msgId?: Uint8Array;
-  /**
-   * Cached uncompressed data
-   */
-  uncompressed?: Uint8Array;
-  /**
-   * deserialized data
-   */
-  gossipObject?: GossipObject;
-  /**
-   * gossip topic
-   */
-  gossipTopic?: GossipTopic;
-}
+export type GossipJobQueues = {
+  [K in GossipType]: JobItemQueue<Parameters<GossipValidatorFn>, ResolvedType<GossipValidatorFn>>;
+};
+
+export type GossipHandlerFn = (
+  object: GossipTypeMap[GossipType],
+  topic: GossipTopicMap[GossipType],
+  peerIdStr: string,
+  seenTimestampSec: number
+) => Promise<void>;
+export type GossipHandlers = {
+  [K in GossipType]: (
+    object: GossipTypeMap[K],
+    topic: GossipTopicMap[K],
+    peerIdStr: string,
+    seenTimestampSec: number
+  ) => Promise<void>;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ResolvedType<F extends (...args: any) => Promise<any>> = F extends (...args: any) => Promise<infer T>
+  ? T
+  : never;

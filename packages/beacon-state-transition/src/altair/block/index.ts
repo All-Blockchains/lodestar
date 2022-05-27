@@ -1,32 +1,30 @@
-import {allForks, altair} from "@chainsafe/lodestar-types";
+import {altair} from "@chainsafe/lodestar-types";
 
-import {CachedBeaconState} from "../../allForks/util";
-import {processBlockHeader, processEth1Data, processRandao} from "../../allForks/block";
-import {processOperations} from "./processOperations";
-import {processAttestation} from "./processAttestation";
-import {processAttesterSlashing} from "./processAttesterSlashing";
-import {processDeposit} from "./processDeposit";
-import {processProposerSlashing} from "./processProposerSlashing";
-import {processVoluntaryExit} from "./processVoluntaryExit";
-import {processSyncCommittee} from "./processSyncCommittee";
+import {CachedBeaconStateAltair} from "../../types.js";
+import {processBlockHeader, processEth1Data, processRandao} from "../../allForks/block/index.js";
+import {processOperations} from "./processOperations.js";
+import {processAttestations, RootCache} from "./processAttestation.js";
+import {processAttesterSlashing} from "./processAttesterSlashing.js";
+import {processDeposit} from "./processDeposit.js";
+import {processProposerSlashing} from "./processProposerSlashing.js";
+import {processVoluntaryExit} from "./processVoluntaryExit.js";
+import {processSyncAggregate} from "./processSyncCommittee.js";
 
 export {
   processOperations,
-  processAttestation,
+  processAttestations,
+  RootCache,
   processAttesterSlashing,
   processDeposit,
   processProposerSlashing,
   processVoluntaryExit,
+  processSyncAggregate,
 };
 
-export function processBlock(
-  state: CachedBeaconState<altair.BeaconState>,
-  block: altair.BeaconBlock,
-  verifySignatures = true
-): void {
-  processBlockHeader(state as CachedBeaconState<allForks.BeaconState>, block);
-  processRandao(state as CachedBeaconState<allForks.BeaconState>, block, verifySignatures);
-  processEth1Data(state as CachedBeaconState<allForks.BeaconState>, block.body);
+export function processBlock(state: CachedBeaconStateAltair, block: altair.BeaconBlock, verifySignatures = true): void {
+  processBlockHeader(state, block);
+  processRandao(state, block, verifySignatures);
+  processEth1Data(state, block.body.eth1Data);
   processOperations(state, block.body, verifySignatures);
-  processSyncCommittee(state, block.body.syncAggregate, verifySignatures);
+  processSyncAggregate(state, block, verifySignatures);
 }

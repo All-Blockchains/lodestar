@@ -2,13 +2,12 @@ import chai, {expect} from "chai";
 import chaiAsPromised from "chai-as-promised";
 import all from "it-all";
 import pipe from "it-pipe";
-import {config} from "@chainsafe/lodestar-config/minimal";
-import {Method, Encoding, RequestBody} from "../../../../../src/network/reqresp/types";
-import {SszSnappyErrorCode} from "../../../../../src/network/reqresp/encodingStrategies/sszSnappy";
-import {requestEncode} from "../../../../../src/network/reqresp/encoders/requestEncode";
-import {requestDecode} from "../../../../../src/network/reqresp/encoders/requestDecode";
-import {sszSnappyPing} from "../encodingStrategies/sszSnappy/testData";
-import {arrToSource, expectEqualByteChunks} from "../utils";
+import {Method, Encoding, RequestBody} from "../../../../../src/network/reqresp/types.js";
+import {SszSnappyErrorCode} from "../../../../../src/network/reqresp/encodingStrategies/sszSnappy/index.js";
+import {requestEncode} from "../../../../../src/network/reqresp/encoders/requestEncode.js";
+import {requestDecode} from "../../../../../src/network/reqresp/encoders/requestDecode.js";
+import {sszSnappyPing} from "../encodingStrategies/sszSnappy/testData.js";
+import {arrToSource, expectEqualByteChunks} from "../utils.js";
 
 chai.use(chaiAsPromised);
 
@@ -55,7 +54,7 @@ describe("network / reqresp / encoders / request - Success and error cases", () 
 
   for (const {id, method, encoding, errorDecode, requestBody, chunks} of testCases) {
     it(`${id} - requestDecode`, async () => {
-      const promise = pipe(arrToSource(chunks), requestDecode(config, {method, encoding}));
+      const promise = pipe(arrToSource(chunks), requestDecode({method, encoding}));
       if (errorDecode) {
         await expect(promise).to.be.rejectedWith(errorDecode);
       } else {
@@ -65,7 +64,7 @@ describe("network / reqresp / encoders / request - Success and error cases", () 
 
     if (requestBody !== undefined) {
       it(`${id} - requestEncode`, async () => {
-        const encodedChunks = await pipe(requestEncode(config, {method, encoding}, requestBody), all);
+        const encodedChunks = await pipe(requestEncode({method, encoding}, requestBody), all);
         expectEqualByteChunks(encodedChunks, chunks);
       });
     }
